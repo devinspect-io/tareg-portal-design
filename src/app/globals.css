@@ -1,0 +1,92 @@
+@import "tailwindcss";
+
+/* Class-driven dark mode (manual toggle), not just prefers-color-scheme */
+@custom-variant dark (&:where(.dark, .dark *));
+
+:root {
+  --background: #ffffff;
+  --foreground: #171717;
+}
+
+.dark {
+  --background: #0a0a0a;
+  --foreground: #f5f5f5;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+
+  /* Prime Logistics navy-blue scale — constant across themes (brand color).
+     Deepened from a bright blue to navy so the login page and the dashboard
+     match the navy marketing site. 950 is the exact homepage background. */
+  --color-prime-50: #eff3fa;
+  --color-prime-100: #dbe4f3;
+  --color-prime-200: #b7c8e5;
+  --color-prime-300: #8ba7d2;
+  --color-prime-400: #5b82bd; /* kept light enough for dark-mode text */
+  --color-prime-500: #2f5c9c;
+  --color-prime-600: #123a82; /* primary — navy blue */
+  --color-prime-700: #0e2e68;
+  --color-prime-800: #0b2450;
+  --color-prime-900: #081c3d;
+  --color-prime-950: #06152b;
+
+  /* Freight orange scale — secondary accent (warnings, secondary data series) */
+  --color-accent-50: #fff7ed;
+  --color-accent-100: #ffedd5;
+  --color-accent-200: #fed7aa;
+  --color-accent-300: #fdba74;
+  --color-accent-400: #fb923c;
+  --color-accent-500: #f97316; /* secondary — freight orange */
+  --color-accent-600: #ea580c;
+  --color-accent-700: #c2410c;
+  --color-accent-800: #9a3412;
+  --color-accent-900: #7c2d12;
+  --color-accent-950: #431407;
+}
+
+html {
+  /* Native inputs/scrollbars follow whichever theme is active */
+  color-scheme: light;
+}
+
+html.dark {
+  color-scheme: dark;
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-geist-sans), system-ui, sans-serif;
+}
+
+/* Chrome/Safari paint autofilled inputs with their own background (usually
+   light blue) AND their own near-invisible text color via this pseudo-class,
+   ignoring our bg-white and text-foreground. Chrome's own UA rule for this
+   state has very high priority, so these overrides need !important to
+   reliably win — without it the text can render almost invisible (very
+   low-contrast) even though it "looks" overridden in devtools. The huge
+   inset shadow repaints the background in our theme color, and the
+   near-infinite transition delay stops the browser's own color flashing in
+   first. */
+input:-webkit-autofill,
+input:-webkit-autofill:hover,
+input:-webkit-autofill:focus,
+input:-webkit-autofill:active {
+  box-shadow: 0 0 0 1000px #ffffff inset !important;
+  -webkit-text-fill-color: #171717 !important;
+  caret-color: #171717;
+  transition: background-color 9999s ease-in-out 0s;
+}
+
+.dark input:-webkit-autofill,
+.dark input:-webkit-autofill:hover,
+.dark input:-webkit-autofill:focus,
+.dark input:-webkit-autofill:active {
+  box-shadow: 0 0 0 1000px #262626 inset !important;
+  -webkit-text-fill-color: #f5f5f5 !important;
+  caret-color: #f5f5f5;
+}
