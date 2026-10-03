@@ -2,12 +2,21 @@
 
 import { useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
+import { useT } from "@/lib/translations";
+import type { Language } from "@/lib/useLanguage";
 
-const WEEKDAYS = ["Mo", "Tu", "We", "Th", "Fr", "Sa", "Su"];
-const MONTHS = [
-  "January", "February", "March", "April", "May", "June",
-  "July", "August", "September", "October", "November", "December",
-];
+// Gregorian calendar + Latin digits in Arabic too (plain "ar" would give Hijri).
+const LOCALE: Record<Language, string> = { en: "en-GB", ar: "ar-u-ca-gregory-nu-latn" };
+
+/** Monday-first short weekday names, e.g. "Mo" / "الاثنين". */
+function weekdays(lang: Language): string[] {
+  const monday = new Date(2024, 0, 1); // a Monday
+  return Array.from({ length: 7 }, (_, i) => {
+    const d = new Date(monday);
+    d.setDate(monday.getDate() + i);
+    return d.toLocaleDateString(LOCALE[lang], { weekday: lang === "ar" ? "narrow" : "short" }).slice(0, lang === "ar" ? undefined : 2);
+  });
+}
 
 function toISO(d: Date) {
   const y = d.getFullYear();
@@ -79,6 +88,7 @@ type DatePickerProps = {
  * (+ dark) palette.
  */
 export default function DatePicker({ id, value, onChange }: DatePickerProps) {
+  const { tx, language } = useT();
   const selectedDate = value ? fromISO(value) : null;
   const [open, setOpen] = useState(false);
   const [view, setView] = useState(() => {
@@ -119,8 +129,8 @@ export default function DatePicker({ id, value, onChange }: DatePickerProps) {
   });
 
   const label = selectedDate
-    ? `${MONTHS[selectedDate.getMonth()].slice(0, 3)} ${selectedDate.getDate()}, ${selectedDate.getFullYear()}`
-    : "Select a date";
+    ? selectedDate.toLocaleDateString(LOCALE[language], { day: "numeric", month: "short", year: "numeric" })
+    : tx({ en: "Select a date", ar: "اختر تاريخًا" });
 
   function pick(day: Date) {
     onChange(toISO(day));
@@ -133,7 +143,7 @@ export default function DatePicker({ id, value, onChange }: DatePickerProps) {
         type="button"
         id={id}
         onClick={() => setOpen((o) => !o)}
-        className="flex w-full items-center gap-2.5 rounded-lg border border-neutral-200 bg-white px-3 py-2.5 text-left text-sm text-foreground outline-none transition-colors focus:border-prime-500 focus:ring-4 focus:ring-prime-500/10 dark:border-neutral-700 dark:bg-neutral-800"
+        className="flex w-full items-center gap-2.5 rounded-lg border border-neutral-200 bg-white px-3 py-2.5 text-start text-sm text-foreground outline-none transition-colors focus:border-prime-500 focus:ring-4 focus:ring-prime-500/10 dark:border-neutral-700 dark:bg-neutral-800"
       >
         <span className="text-neutral-400 dark:text-neutral-500">
           <CalendarIcon />
@@ -152,7 +162,7 @@ export default function DatePicker({ id, value, onChange }: DatePickerProps) {
           >
             <div className="mb-2 flex items-center justify-between">
               <span className="text-sm font-bold text-foreground">
-                {MONTHS[view.getMonth()]} {view.getFullYear()}
+                {view.toLocaleDateString(LOCALE[language], { month: "long", year: "numeric" })}
               </span>
               <div className="flex items-center gap-1">
                 <button
@@ -162,7 +172,9 @@ export default function DatePicker({ id, value, onChange }: DatePickerProps) {
                   }
                   className="grid h-7 w-7 place-items-center rounded-md text-neutral-500 transition-colors hover:bg-neutral-100 dark:text-neutral-400 dark:hover:bg-neutral-700"
                 >
-                  <ChevronIcon direction="left" />
+                  <span className="block rtl:-scale-x-100">
+                    <ChevronIcon direction="left" />
+                  </span>
                 </button>
                 <button
                   type="button"
@@ -171,13 +183,15 @@ export default function DatePicker({ id, value, onChange }: DatePickerProps) {
                   }
                   className="grid h-7 w-7 place-items-center rounded-md text-neutral-500 transition-colors hover:bg-neutral-100 dark:text-neutral-400 dark:hover:bg-neutral-700"
                 >
-                  <ChevronIcon direction="right" />
+                  <span className="block rtl:-scale-x-100">
+                    <ChevronIcon direction="right" />
+                  </span>
                 </button>
               </div>
             </div>
 
             <div className="grid grid-cols-7 text-center">
-              {WEEKDAYS.map((w) => (
+              {weekdays(language).map((w) => (
                 <span
                   key={w}
                   className="pb-1 text-[11px] font-semibold text-neutral-400 dark:text-neutral-500"
@@ -216,7 +230,7 @@ export default function DatePicker({ id, value, onChange }: DatePickerProps) {
               onClick={() => pick(new Date())}
               className="mt-2 w-full rounded-md py-1.5 text-center text-xs font-semibold text-prime-600 transition-colors hover:bg-prime-50 dark:hover:bg-prime-950/40"
             >
-              Today
+              {tx({ en: "Today", ar: "اليوم" })}
             </button>
           </motion.div>
         )}

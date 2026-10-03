@@ -1,31 +1,5 @@
-// Nav config + demo data for the Tareg dashboard.
-// All figures are placeholder demo data until the real backend exists.
-
-export type NavItem = {
-  label: string;
-  icon: string; // key into the icon map in Sidebar
-  hasChildren?: boolean;
-  /** Kept in config (and its view still routable) but left out of the sidebar. */
-  hidden?: boolean;
-};
-
-export const NAV_ITEMS: NavItem[] = [
-  { label: "Home", icon: "home" },
-  { label: "AI Reporting", icon: "sparkles", hidden: true },
-  { label: "Customers/Carriers", icon: "people", hasChildren: true },
-  { label: "Shipments", icon: "truck", hasChildren: true },
-  { label: "Billing & Invoices", icon: "invoice" },
-  { label: "Procurement", icon: "cart", hasChildren: true },
-  { label: "Warehouse Stock", icon: "boxes", hasChildren: true },
-  { label: "Vouchers", icon: "receipt", hasChildren: true },
-  { label: "Banking", icon: "bank", hasChildren: true },
-  { label: "Chart Of Accounts", icon: "ledger" },
-  { label: "Financial Reports", icon: "chart", hasChildren: true },
-  { label: "HRM", icon: "person", hasChildren: true },
-  { label: "Fleet Maintenance", icon: "factory", hasChildren: true },
-  { label: "Master Setup", icon: "gears", hasChildren: true },
-  { label: "System Setup", icon: "tools", hasChildren: true },
-];
+// Legacy finance demo data. Only the hidden AI Reporting screen (ai-reports.ts)
+// still reads this; the fleet portal itself uses fleet-data.ts.
 
 export const STATS = [
   { label: "Shipments", value: 1284, sub: "Shipments Completed All Time", prefix: "" },
@@ -34,15 +8,6 @@ export const STATS = [
   { label: "Stock", value: 1106700, sub: "Warehouse Stock Valuation", prefix: "AED " },
   { label: "Receivable", value: 184500, sub: "Accounts Receivable", prefix: "AED " },
   { label: "Payable", value: 96200, sub: "Accounts Payable", prefix: "AED " },
-];
-
-export const QUICK_ACTIONS = [
-  { label: "New Shipment Invoice", icon: "pos" },
-  { label: "New Procurement", icon: "cart" },
-  { label: "New Receive Voucher", icon: "voucher" },
-  { label: "Record Expenses", icon: "receipt" },
-  { label: "Cash Flow Report", icon: "flow" },
-  { label: "Bank Statement", icon: "bank" },
 ];
 
 export const LAST_7_DAYS = [
@@ -106,61 +71,6 @@ export const INVENTORY_STATUS = [
 // ---------- Warehouse Stock module ----------
 
 /** Item names offered in the "New Stock Entry" dropdown. */
-export const ITEM_NAMES = [
-  "Diesel (Liters)",
-  "Pallet Wrap Rolls",
-  "Truck Tires",
-  "Fuel Filters",
-  "GPS Trackers",
-  "Cargo Straps",
-  "Container Seals",
-  "Forklift Batteries",
-  "Safety Vests",
-  "Loading Ramps",
-];
-
-/** Warehouses offered in the "New Stock Entry" dropdown — branch names plus extras. */
-export const WAREHOUSES = [
-  ...BRANCH_SALES.map((b) => b.name),
-  "Al Balad, Jeddah",
-];
-
-/** Suppliers offered in the "New Stock Entry" dropdown. */
-export const SUPPLIERS = [
-  "Continental Tyres Arabia",
-  "ADNOC Fuel Services",
-  "Packly Pallet Solutions",
-  "TrackWell GPS Systems",
-  "SafeLoad Cargo Gear",
-];
-
-/** Assumed pack size when converting carton counts to individual units. */
-export const UNITS_PER_CARTON = 12;
-
-/** Below this many total units (carton × pack size + loose pieces), a row is flagged LOW. */
-export const LOW_STOCK_THRESHOLD = 20;
-
-export type InventoryRow = {
-  id: string;
-  date: string; // yyyy-mm-dd
-  item: string;
-  carton: number;
-  pieces: number;
-  supplier: string;
-  credit: number;
-  debit: number;
-  warehouse: string;
-};
-
-export const INITIAL_INVENTORY: InventoryRow[] = [
-  { id: "inv-1", date: "2026-08-14", item: "Diesel (Liters)", carton: 10, pieces: 2, supplier: "ADNOC Fuel Services", credit: 0, debit: 61000, warehouse: "Deira" },
-  { id: "inv-2", date: "2026-08-15", item: "Pallet Wrap Rolls", carton: 21, pieces: 8, supplier: "Packly Pallet Solutions", credit: 45000, debit: 0, warehouse: "Jebel Ali" },
-  { id: "inv-3", date: "2026-08-16", item: "Truck Tires", carton: 1, pieces: 6, supplier: "Continental Tyres Arabia", credit: 0, debit: 9400, warehouse: "Al Quoz" },
-  { id: "inv-4", date: "2026-08-17", item: "Fuel Filters", carton: 8, pieces: 0, supplier: "ADNOC Fuel Services", credit: 12500, debit: 0, warehouse: "Business Bay" },
-  { id: "inv-5", date: "2026-08-18", item: "GPS Trackers", carton: 0, pieces: 7, supplier: "TrackWell GPS Systems", credit: 0, debit: 16800, warehouse: "Deira" },
-  { id: "inv-6", date: "2026-08-19", item: "Cargo Straps", carton: 2, pieces: 10, supplier: "SafeLoad Cargo Gear", credit: 8200, debit: 0, warehouse: "Jebel Ali" },
-];
-
 export const BALANCE_SHEET = {
   assets: [
     { item: "Cash", amount: "AED 421,500" },

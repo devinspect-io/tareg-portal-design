@@ -42,7 +42,7 @@ export default function Hero() {
 
   return (
     <section ref={heroRef} className="relative overflow-hidden bg-[#06152B] pt-36 pb-20 text-white md:pt-44 md:pb-24">
-      {/* Plain gradient wash in place of the old hero photo — keeps the
+      {/* Plain gradient wash in place of the old hero photo. Keeps the
           existing navy/orange palette (theme pass comes later), just the
           hero background breathing via a slow scale pulse. */}
       <motion.div

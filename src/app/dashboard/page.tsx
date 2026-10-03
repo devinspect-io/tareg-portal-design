@@ -3,136 +3,130 @@
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { AnimatePresence, motion } from "framer-motion";
-import Sidebar from "@/components/dashboard/Sidebar";
+import Sidebar, { NavIcon } from "@/components/dashboard/Sidebar";
 import Topbar from "@/components/dashboard/Topbar";
 import StatCard from "@/components/dashboard/StatCard";
 import ChartCard from "@/components/dashboard/ChartCard";
-import DataTable, { StatusBadge } from "@/components/dashboard/DataTable";
-import ComingSoon from "@/components/dashboard/ComingSoon";
+import DataTable, { Badge } from "@/components/dashboard/DataTable";
 import DatePicker from "@/components/dashboard/DatePicker";
-import InventoryView from "@/components/dashboard/InventoryView";
 import AiReportingView from "@/components/dashboard/AiReportingView";
 import AiAssistant from "@/components/dashboard/AiAssistant";
-import ModuleView from "@/components/dashboard/ModuleView";
-import BillingView from "@/components/dashboard/BillingView";
-import { MODULE_VIEWS } from "@/lib/module-data";
+import FleetModule from "@/components/dashboard/FleetModules";
 import Loader from "@/components/Loader";
-import { primeChartOptions, PRIME_BLUE, ACCENT_ORANGE } from "@/lib/chart-theme";
+import { primeChartOptions, PRIME_BLUE, ACCENT_ORANGE, CHART_COLORS } from "@/lib/chart-theme";
 import { useTheme } from "@/lib/useTheme";
-
+import { useT, type Bi } from "@/lib/translations";
+import type { Language } from "@/lib/useLanguage";
 import {
-  BALANCE_SHEET,
-  BRANCH_SALES,
-  CASH_IN,
-  CASH_OUT,
-  EXPENSE_SERIES,
-  INVENTORY_STATUS,
-  LAST_7_DAYS,
-  PAYABLE_TOTAL,
-  QUICK_ACTIONS,
-  RECEIVABLE_TOTAL,
-  REVENUE_SERIES,
-  SALES_TREND,
-  STATS,
-  TERRITORY_SALES,
-  TOP_CUSTOMERS,
-  TOP_ROUTES,
-} from "@/lib/dashboard-data";
+  APPROVALS,
+  BREAKDOWNS,
+  DRIVERS,
+  EXPENSES,
+  EXPENSE_CATEGORIES,
+  MAINTENANCE_COST,
+  MILEAGE,
+  MODULE_LABELS,
+  MONTHLY_KM,
+  SCHEDULED_MAINTENANCE,
+  STATUS,
+  VEHICLES,
+  complianceItems,
+  driverById,
+  dueStatus,
+  expiryStatus,
+  fmtDate,
+  fmtKm,
+  fmtSAR,
+  lastMonths,
+  vehicleById,
+  type ExpenseCategory,
+  type ModuleKey,
+  type StatusCode,
+} from "@/lib/fleet-data";
 
 // Floating AI assistant (bottom-right) is hidden for now, not removed. Flip to bring it back.
 const SHOW_AI_ASSISTANT = false;
+// "Maintenance cost: scheduled vs emergency" chart is hidden for now, not removed.
+const SHOW_MAINTENANCE_COST_CHART = false;
 
-// ---------- Chart configs (static demo data; blue = inbound, orange = outbound) ----------
+// ---------- Chart configs ----------
 
-function buildChartOptions(dark: boolean) {
+function buildChartOptions(dark: boolean, lang: Language, tx: (b: Bi) => string) {
+  const months = lastMonths(6, lang);
+
+  const byCategory = new Map<ExpenseCategory, number>();
+  for (const e of EXPENSES) byCategory.set(e.category, (byCategory.get(e.category) ?? 0) + e.amount);
+
+  const statusCounts = new Map<StatusCode, number>();
+  for (const v of VEHICLES) statusCounts.set(v.status, (statusCounts.get(v.status) ?? 0) + 1);
+  const STATUS_COLOR: Partial<Record<StatusCode, string>> = {
+    active: "#16a34a",
+    inMaintenance: ACCENT_ORANGE,
+    brokenDown: "#dc2626",
+    inactive: "#a3a3a3",
+  };
+
+  // Donuts live in a third-width card: two legend columns and a slightly smaller
+  // pie keep six long category names from paging the legend ("1/2").
+  const donutLegend = { itemWidth: 135, itemDistance: 8, itemMarginTop: 3, symbolHeight: 9 };
+  const donutPie = { pie: { size: "78%", center: ["50%", "42%"] as [string, string] } };
+
   return {
-    salesTrend: primeChartOptions(
+    mileage: primeChartOptions(
       {
-        chart: { type: "line", height: 250 },
-        xAxis: { categories: LAST_7_DAYS },
+        chart: { type: "areaspline", height: 250 },
+        xAxis: { categories: months },
         legend: { enabled: false },
-        series: [
-          {
-            type: "line",
-            name: "Shipments Delivered",
-            data: SALES_TREND,
-            marker: { enabled: true, radius: 4 },
-          },
-        ],
+        plotOptions: { areaspline: { fillOpacity: 0.12 } },
+        tooltip: { pointFormat: `<b>{point.y:,.0f} ${lang === "ar" ? "كم" : "km"}</b>` },
+        series: [{ type: "areaspline", name: tx({ en: "Kilometers", ar: "الكيلومترات" }), data: MONTHLY_KM, color: PRIME_BLUE, marker: { enabled: true, radius: 4 } }],
       },
       dark,
     ),
-    receivablesPayables: primeChartOptions(
+    expenses: primeChartOptions(
       {
         chart: { type: "pie", height: 250 },
-        tooltip: { pointFormat: "<b>AED {point.y:,.0f}</b>" },
+        legend: donutLegend,
+        plotOptions: donutPie,
+        tooltip: { pointFormat: `<b>{point.y:,.0f} ${lang === "ar" ? "ر.س" : "SAR"}</b>` },
         series: [
           {
             type: "pie",
-            innerSize: "65%",
+            innerSize: "60%",
             dataLabels: { enabled: false },
             showInLegend: true,
-            data: [
-              { name: "Receivable", y: RECEIVABLE_TOTAL, color: PRIME_BLUE },
-              { name: "Payable", y: PAYABLE_TOTAL, color: ACCENT_ORANGE },
-            ],
+            data: [...byCategory.entries()].map(([cat, y], i) => ({ name: tx(EXPENSE_CATEGORIES[cat]), y, color: CHART_COLORS[i % CHART_COLORS.length] })),
           },
         ],
       },
       dark,
     ),
-    revenueExpenses: primeChartOptions(
+    status: primeChartOptions(
       {
-        chart: { type: "column", height: 250 },
-        xAxis: { categories: LAST_7_DAYS },
-        plotOptions: { column: { borderRadius: 3 } },
-        series: [
-          { type: "column", name: "Revenue", data: REVENUE_SERIES, color: PRIME_BLUE },
-          { type: "column", name: "Expenses", data: EXPENSE_SERIES, color: ACCENT_ORANGE },
-        ],
-      },
-      dark,
-    ),
-    cashFlow: primeChartOptions(
-      {
-        chart: { type: "areaspline", height: 250 },
-        xAxis: { categories: LAST_7_DAYS },
-        plotOptions: {
-          areaspline: { fillOpacity: 0.12, marker: { enabled: false } },
-        },
-        series: [
-          { type: "areaspline", name: "Cash In", data: CASH_IN, color: PRIME_BLUE },
-          { type: "areaspline", name: "Cash Out", data: CASH_OUT, color: ACCENT_ORANGE },
-        ],
-      },
-      dark,
-    ),
-    branchSales: primeChartOptions(
-      {
-        chart: { type: "bar", height: 250 },
-        xAxis: { categories: BRANCH_SALES.map((b) => b.name) },
-        legend: { enabled: false },
-        tooltip: { pointFormat: "<b>AED {point.y:,.0f}</b>" },
-        plotOptions: { bar: { borderRadius: 3, colorByPoint: true } },
-        series: [
-          { type: "bar", name: "Sales", data: BRANCH_SALES.map((b) => b.value) },
-        ],
-      },
-      dark,
-    ),
-    territorySales: primeChartOptions(
-      {
-        chart: { type: "column", height: 250 },
-        xAxis: { categories: TERRITORY_SALES.map((t) => t.name) },
-        legend: { enabled: false },
-        tooltip: { pointFormat: "<b>AED {point.y:,.0f}</b>" },
-        plotOptions: { column: { borderRadius: 3, colorByPoint: true } },
+        chart: { type: "pie", height: 250 },
+        legend: donutLegend,
+        plotOptions: donutPie,
         series: [
           {
-            type: "column",
-            name: "Sales",
-            data: TERRITORY_SALES.map((t) => t.value),
+            type: "pie",
+            innerSize: "60%",
+            dataLabels: { enabled: false },
+            showInLegend: true,
+            data: [...statusCounts.entries()].map(([code, y]) => ({ name: tx(STATUS[code].label), y, color: STATUS_COLOR[code] ?? PRIME_BLUE })),
           },
+        ],
+      },
+      dark,
+    ),
+    maintenance: primeChartOptions(
+      {
+        chart: { type: "column", height: 250 },
+        xAxis: { categories: months },
+        plotOptions: { column: { borderRadius: 3, stacking: "normal" } },
+        tooltip: { pointFormat: `{series.name}: <b>{point.y:,.0f} ${lang === "ar" ? "ر.س" : "SAR"}</b>` },
+        series: [
+          { type: "column", name: tx({ en: "Scheduled", ar: "مجدولة" }), data: MAINTENANCE_COST.scheduled, color: PRIME_BLUE },
+          { type: "column", name: tx({ en: "Emergency", ar: "طارئة" }), data: MAINTENANCE_COST.emergency, color: ACCENT_ORANGE },
         ],
       },
       dark,
@@ -142,72 +136,27 @@ function buildChartOptions(dark: boolean) {
 
 // ---------- Entrance animation variants ----------
 
-const container = {
-  hidden: {},
-  visible: { transition: { staggerChildren: 0.08 } },
-};
-
+const container = { hidden: {}, visible: { transition: { staggerChildren: 0.08 } } };
 const section = {
   hidden: { opacity: 0, y: 24 },
-  visible: {
-    opacity: 1,
-    y: 0,
-    transition: { duration: 0.5, ease: [0.22, 1, 0.36, 1] as const },
-  },
+  visible: { opacity: 1, y: 0, transition: { duration: 0.5, ease: [0.22, 1, 0.36, 1] as const } },
 };
 
-// ---------- Quick-action icons ----------
+const QUICK_ACTIONS: { icon: string; label: Bi; target: ModuleKey }[] = [
+  { icon: "car", label: { en: "Add vehicle", ar: "إضافة مركبة" }, target: "vehicles" },
+  { icon: "driver", label: { en: "Add driver", ar: "إضافة سائق" }, target: "drivers" },
+  { icon: "wrench", label: { en: "Record maintenance", ar: "تسجيل صيانة" }, target: "maintenance" },
+  { icon: "accident", label: { en: "Record accident", ar: "تسجيل حادث" }, target: "accidents" },
+  { icon: "ticket", label: { en: "Record violation", ar: "تسجيل مخالفة" }, target: "violations" },
+  { icon: "receipt", label: { en: "Add expense", ar: "إضافة مصروف" }, target: "expenses" },
+];
 
-function ActionIcon({ name }: { name: string }) {
-  const paths: Record<string, React.ReactNode> = {
-    pos: (
-      <>
-        <rect x={4} y={3} width={16} height={8} rx={1.5} />
-        <path d="M4 15h16v6H4zM8 7h.01M12 7h.01M16 7h.01M8 18h8" />
-      </>
-    ),
-    cart: (
-      <>
-        <path d="M3 4h2l2.4 11.2a1.5 1.5 0 0 0 1.5 1.3h7.7a1.5 1.5 0 0 0 1.5-1.2L20 8H6" />
-        <circle cx={10} cy={20} r={1.5} />
-        <circle cx={16.5} cy={20} r={1.5} />
-      </>
-    ),
-    voucher: (
-      <>
-        <rect x={3} y={6} width={18} height={12} rx={2} />
-        <path d="M3 10h18M8 15h4" />
-      </>
-    ),
-    receipt: (
-      <>
-        <path d="M6 2h12v20l-2-1.5L14 22l-2-1.5L10 22l-2-1.5L6 22z" />
-        <path d="M9.5 7h5M9.5 11h5M9.5 15h3" />
-      </>
-    ),
-    flow: (
-      <>
-        <path d="M4 7h13M14 3l4 4-4 4M20 17H7M10 13l-4 4 4 4" />
-      </>
-    ),
-    bank: (
-      <path d="M3 9l9-6 9 6M4 9v9M8 10v8M12 10v8M16 10v8M20 9v9M2.5 21h19" />
-    ),
-  };
+function ViewAll({ onClick }: { onClick: () => void }) {
+  const { t } = useT();
   return (
-    <svg
-      width={26}
-      height={26}
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth={1.6}
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden="true"
-    >
-      {paths[name]}
-    </svg>
+    <button onClick={onClick} className="text-xs font-semibold text-prime-600 transition-colors hover:text-prime-700 dark:text-prime-400">
+      {t("viewAll")}
+    </button>
   );
 }
 
@@ -216,33 +165,51 @@ function ActionIcon({ name }: { name: string }) {
 export default function DashboardPage() {
   const router = useRouter();
   const { theme } = useTheme();
+  const { t, tx, language } = useT();
   const [booting, setBooting] = useState(true);
   const [mobileOpen, setMobileOpen] = useState(false);
-  const [view, setView] = useState("Home");
-  const [opening, setOpening] = useState<string | null>(null);
+  const [view, setView] = useState<ModuleKey>("dashboard");
+  const [opening, setOpening] = useState<ModuleKey | null>(null);
   const [filterFrom, setFilterFrom] = useState("");
   const [filterTo, setFilterTo] = useState("");
-  const [ledgerDate, setLedgerDate] = useState("");
 
-  const charts = useMemo(() => buildChartOptions(theme === "dark"), [theme]);
+  const charts = useMemo(() => buildChartOptions(theme === "dark", language, (b) => b[language]), [theme, language]);
 
   useEffect(() => {
-    const t = setTimeout(() => setBooting(false), 1100);
-    return () => clearTimeout(t);
+    const timer = setTimeout(() => setBooting(false), 1100);
+    return () => clearTimeout(timer);
   }, []);
 
-  function openModule(label: string) {
-    if (label === "Home") {
-      setView("Home");
+  function openModule(key: ModuleKey) {
+    if (key === "dashboard") {
+      setView("dashboard");
       return;
     }
-    if (opening) return;
-    setOpening(label);
+    if (opening || key === view) return;
+    setOpening(key);
     setTimeout(() => {
-      setView(label);
+      setView(key);
       setOpening(null);
     }, 900);
   }
+
+  // ---------- Derived dashboard figures ----------
+  const compliance = complianceItems();
+  const expired = compliance.filter((c) => expiryStatus(c.expiry) === "expired");
+  const expiring = compliance.filter((c) => expiryStatus(c.expiry) === "expiringSoon");
+  const pendingApprovals = APPROVALS.filter((a) => a.status === "pending");
+  const openBreakdowns = BREAKDOWNS.filter((b) => b.status !== "closed");
+  const offRoad = VEHICLES.filter((v) => v.status === "inMaintenance" || v.status === "brokenDown");
+  const spend = EXPENSES.reduce((s, e) => s + e.amount, 0);
+  const sarSuffix = language === "ar" ? " ر.س" : "";
+  const sarPrefix = language === "ar" ? "" : "SAR ";
+
+  const driverName = (id: string) => {
+    const d = driverById(id);
+    return d ? tx(d.name) : "-";
+  };
+  const plate = (id: string) => vehicleById(id)?.plate ?? "-";
+  const status = (code: StatusCode) => <Badge label={tx(STATUS[code].label)} tone={STATUS[code].tone} />;
 
   return (
     <div className="flex min-h-screen bg-neutral-50 dark:bg-neutral-950">
@@ -255,38 +222,25 @@ export default function DashboardPage() {
       />
 
       <div className="flex min-w-0 flex-1 flex-col">
-        <Topbar onToggleMobileSidebar={() => setMobileOpen((o) => !o)} />
+        <Topbar onToggleMobileSidebar={() => setMobileOpen((o) => !o)} onNavigate={openModule} />
 
         <main className="flex-1 px-4 py-6 sm:px-6">
-          {view === "Warehouse Stock" ? (
-            <InventoryView />
-          ) : view === "AI Reporting" ? (
+          {view === "ai-reporting" ? (
             <AiReportingView />
-          ) : view === "Billing & Invoices" ? (
-            <BillingView />
-          ) : MODULE_VIEWS[view] ? (
-            <ModuleView config={MODULE_VIEWS[view]} />
-          ) : view !== "Home" ? (
-            <ComingSoon module={view} onBack={() => setView("Home")} />
+          ) : view !== "dashboard" ? (
+            <FleetModule key={view} moduleKey={view} onNavigate={openModule} />
           ) : (
             !booting && (
-              <motion.div
-                variants={container}
-                initial="hidden"
-                animate="visible"
-                className="mx-auto max-w-7xl space-y-6"
-              >
+              <motion.div variants={container} initial="hidden" animate="visible" className="mx-auto max-w-7xl space-y-6">
                 {/* Header + filters */}
-                <motion.div
-                  variants={section}
-                  className="flex flex-wrap items-end justify-between gap-4"
-                >
+                <motion.div variants={section} className="flex flex-wrap items-end justify-between gap-4">
                   <div>
                     <h1 className="text-2xl font-bold text-foreground">
-                      Tareg <span className="text-prime-600">Dashboard</span>
+                      {tx({ en: "Fleet", ar: "لوحة تحكم" })}{" "}
+                      <span className="text-prime-600">{tx({ en: "Dashboard", ar: "الأسطول" })}</span>
                     </h1>
                     <p className="mt-1 text-sm text-neutral-500 dark:text-neutral-400">
-                      Welcome back! Here&apos;s your business overview.
+                      {tx({ en: "Vehicles, drivers, compliance and approvals at a glance.", ar: "المركبات والسائقون والامتثال والموافقات في لمحة واحدة." })}
                     </p>
                   </div>
                   <div className="flex flex-wrap items-center gap-2">
@@ -297,7 +251,7 @@ export default function DashboardPage() {
                       <DatePicker value={filterTo} onChange={setFilterTo} />
                     </div>
                     <button className="rounded-lg bg-prime-600 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-prime-500">
-                      Filter
+                      {t("filter")}
                     </button>
                     <button
                       onClick={() => {
@@ -306,184 +260,97 @@ export default function DashboardPage() {
                       }}
                       className="rounded-lg border border-neutral-200 bg-white px-4 py-2 text-sm font-medium text-neutral-600 transition-colors hover:bg-neutral-100 dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-300 dark:hover:bg-neutral-700"
                     >
-                      Clear
+                      {t("clear")}
                     </button>
                   </div>
                 </motion.div>
 
-                {/* Stat cards */}
-                <motion.div
-                  variants={section}
-                  className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3"
-                >
-                  {STATS.map((s) => (
-                    <StatCard
-                      key={s.sub}
-                      value={s.value}
-                      sub={s.sub}
-                      prefix={s.prefix}
-                    />
-                  ))}
-                </motion.div>
-
-                {/* Quick Ledger Access */}
-                <motion.div
-                  variants={section}
-                  className="rounded-xl border border-neutral-100 bg-white p-5 shadow-sm dark:border-neutral-800 dark:bg-neutral-900"
-                >
-                  <h2 className="mb-4 text-lg font-bold text-foreground">
-                    Quick Ledger Access
-                  </h2>
-                  <div className="flex flex-wrap items-center gap-3">
-                    <input
-                      placeholder="Enter Customer/Supplier/Account Name"
-                      className="min-w-56 flex-1 rounded-lg border border-neutral-200 bg-white px-3 py-2 text-sm text-foreground outline-none transition-colors placeholder:text-neutral-400 focus:border-prime-500 dark:border-neutral-700 dark:bg-neutral-800 dark:placeholder:text-neutral-500"
-                    />
-                    <div className="flex items-center gap-4 text-sm text-neutral-600 dark:text-neutral-300">
-                      {["Customer", "Supplier", "Account (GL)"].map((r, i) => (
-                        <label
-                          key={r}
-                          className="flex cursor-pointer items-center gap-1.5"
-                        >
-                          <input
-                            type="radio"
-                            name="ledger-type"
-                            defaultChecked={i === 0}
-                            className="accent-prime-600"
-                          />
-                          {r}
-                        </label>
-                      ))}
-                    </div>
-                    <div className="flex flex-wrap gap-1.5">
-                      {["7D", "14D", "30D", "Quarter", "Year", "All"].map(
-                        (chip) => (
-                          <button
-                            key={chip}
-                            className={`rounded-lg border px-3 py-1.5 text-xs font-medium transition-colors ${
-                              chip === "All"
-                                ? "border-prime-600 bg-prime-600 text-white"
-                                : "border-neutral-200 bg-white text-neutral-600 hover:border-prime-300 hover:text-prime-700 dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-300 dark:hover:border-prime-500 dark:hover:text-prime-400"
-                            }`}
-                          >
-                            {chip}
-                          </button>
-                        ),
-                      )}
-                    </div>
-                    <div className="w-40">
-                      <DatePicker value={ledgerDate} onChange={setLedgerDate} />
-                    </div>
-                    <button
-                      onClick={() => openModule("Ledger")}
-                      className="rounded-lg bg-prime-600 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-prime-500"
-                    >
-                      Open Ledger
-                    </button>
-                  </div>
+                {/* KPI cards: each opens the module it summarises */}
+                <motion.div variants={section} className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+                  <StatCard value={VEHICLES.length} sub={tx({ en: "Total vehicles", ar: "إجمالي المركبات" })} onClick={() => openModule("vehicles")} />
+                  <StatCard value={DRIVERS.filter((d) => d.status === "active").length} sub={tx({ en: "Active drivers", ar: "السائقون النشطون" })} onClick={() => openModule("drivers")} />
+                  <StatCard value={offRoad.length} sub={tx({ en: "Vehicles off the road", ar: "مركبات خارج الخدمة" })} tone="warn" onClick={() => openModule("maintenance")} />
+                  <StatCard value={openBreakdowns.length} sub={tx({ en: "Open breakdowns", ar: "أعطال مفتوحة" })} tone="bad" onClick={() => openModule("breakdowns")} />
+                  <StatCard value={pendingApprovals.length} sub={tx({ en: "Pending approvals", ar: "موافقات معلقة" })} tone="warn" onClick={() => openModule("approvals")} />
+                  <StatCard value={expiring.length} sub={tx({ en: "Expiring in 30 days", ar: "تنتهي خلال 30 يومًا" })} tone="warn" onClick={() => openModule("compliance")} />
+                  <StatCard value={expired.length} sub={tx({ en: "Expired documents", ar: "وثائق منتهية" })} tone="bad" onClick={() => openModule("compliance")} />
+                  <StatCard value={spend} prefix={sarPrefix} suffix={sarSuffix} sub={tx({ en: "Fleet expenses (30 days)", ar: "مصروفات الأسطول (30 يومًا)" })} onClick={() => openModule("expenses")} />
                 </motion.div>
 
                 {/* Quick Actions */}
                 <motion.div variants={section}>
-                  <h2 className="mb-4 text-lg font-bold text-foreground">
-                    Quick Actions
-                  </h2>
+                  <h2 className="mb-4 text-lg font-bold text-foreground">{t("quickActions")}</h2>
                   <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-6">
                     {QUICK_ACTIONS.map((a) => (
                       <motion.button
-                        key={a.label}
-                        onClick={() => openModule(a.label)}
+                        key={a.target}
+                        onClick={() => openModule(a.target)}
                         whileHover={{ y: -3 }}
                         whileTap={{ scale: 0.97 }}
                         className="group flex flex-col items-center gap-2.5 rounded-xl border border-neutral-100 bg-white px-3 py-5 text-neutral-700 shadow-sm transition-colors hover:border-prime-200 hover:text-prime-600 dark:border-neutral-800 dark:bg-neutral-900 dark:text-neutral-300 dark:hover:border-prime-800 dark:hover:text-prime-400"
                       >
-                        <ActionIcon name={a.icon} />
-                        <span className="text-center text-xs font-medium">
-                          {a.label}
-                        </span>
+                        <NavIcon name={a.icon} size={26} />
+                        <span className="text-center text-xs font-medium">{tx(a.label)}</span>
                       </motion.button>
                     ))}
                   </div>
                 </motion.div>
 
-                {/* Charts */}
-                <motion.div
-                  variants={section}
-                  className="grid grid-cols-1 gap-4 lg:grid-cols-2"
-                >
-                  <ChartCard title="Shipment Trend" options={charts.salesTrend} />
-                  <ChartCard
-                    title="Receivables vs Payables"
-                    options={charts.receivablesPayables}
+                {/* Needs attention */}
+                <motion.div variants={section} className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+                  <DataTable
+                    title={tx({ en: "Upcoming & overdue expiries", ar: "الوثائق المنتهية والقريبة من الانتهاء" })}
+                    action={<ViewAll onClick={() => openModule("compliance")} />}
+                    headers={[tx({ en: "Document", ar: "الوثيقة" }), tx({ en: "Holder", ar: "صاحب الوثيقة" }), tx({ en: "Expiry", ar: "الانتهاء" }), tx({ en: "Status", ar: "الحالة" })]}
+                    rows={[...expired, ...expiring].slice(0, 6).map((c, i) => ({
+                      key: `exp-${i}`,
+                      cells: [tx(c.document), tx(c.subject), fmtDate(c.expiry, language), status(expiryStatus(c.expiry))],
+                    }))}
                   />
-                  <ChartCard
-                    title="Revenue vs Expenses"
-                    options={charts.revenueExpenses}
-                  />
-                  <ChartCard
-                    title="Cash Flow (Last 7 Days)"
-                    options={charts.cashFlow}
-                  />
-                  <ChartCard title="Branch Sales" options={charts.branchSales} />
-                  <ChartCard
-                    title="Territory Sales"
-                    options={charts.territorySales}
+                  <DataTable
+                    title={tx({ en: "Pending approvals", ar: "الموافقات المعلقة" })}
+                    action={<ViewAll onClick={() => openModule("approvals")} />}
+                    headers={[tx({ en: "Request", ar: "الطلب" }), tx({ en: "Driver", ar: "السائق" }), tx({ en: "Amount", ar: "المبلغ" }), tx({ en: "Waiting on", ar: "بانتظار" })]}
+                    rows={pendingApprovals.map((a) => {
+                      const step = a.steps.find((s) => s.state === "current");
+                      return {
+                        key: a.id,
+                        cells: [tx(a.type), driverName(a.driverId), fmtSAR(a.amount, language), step ? <Badge key="w" label={tx(step.role)} tone="warn" /> : "-"],
+                      };
+                    })}
                   />
                 </motion.div>
 
-                {/* Tables */}
-                <motion.div
-                  variants={section}
-                  className="grid grid-cols-1 gap-4 lg:grid-cols-2"
-                >
+                {/* Charts */}
+                {/* Three charts sit in one row; four fall back to a 2x2 grid. */}
+                <motion.div variants={section} className={`grid grid-cols-1 gap-4 ${SHOW_MAINTENANCE_COST_CHART ? "lg:grid-cols-2" : "lg:grid-cols-3"}`}>
+                  <ChartCard title={tx({ en: "Kilometers driven (6 months)", ar: "الكيلومترات المقطوعة (6 أشهر)" })} options={charts.mileage} />
+                  <ChartCard title={tx({ en: "Expenses by category", ar: "المصروفات حسب الفئة" })} options={charts.expenses} />
+                  <ChartCard title={tx({ en: "Fleet status", ar: "حالة الأسطول" })} options={charts.status} />
+                  {SHOW_MAINTENANCE_COST_CHART && (
+                    <ChartCard title={tx({ en: "Maintenance cost: scheduled vs emergency", ar: "تكلفة الصيانة: مجدولة مقابل طارئة" })} options={charts.maintenance} />
+                  )}
+                </motion.div>
+
+                {/* Operations */}
+                <motion.div variants={section} className="grid grid-cols-1 gap-4 lg:grid-cols-2">
                   <DataTable
-                    title="Top Routes"
-                    headers={["Route", "Shipments", "Revenue"]}
-                    rows={TOP_ROUTES.map((r) => ({
-                      cells: [r.route, r.shipments, r.revenue],
+                    title={tx({ en: "Upcoming maintenance", ar: "الصيانة القادمة" })}
+                    action={<ViewAll onClick={() => openModule("maintenance")} />}
+                    headers={[tx({ en: "Vehicle", ar: "المركبة" }), tx({ en: "Service", ar: "الخدمة" }), tx({ en: "Due", ar: "الاستحقاق" }), tx({ en: "Status", ar: "الحالة" })]}
+                    rows={SCHEDULED_MAINTENANCE.slice(0, 5).map((m, i) => ({
+                      key: `m-${i}`,
+                      cells: [plate(m.vehicleId), tx(m.task), fmtDate(m.dueDate, language), status(dueStatus(m.dueDate))],
                     }))}
                   />
                   <DataTable
-                    title="Top Customers"
-                    headers={["Customer", "Shipments", "Sales"]}
-                    rows={TOP_CUSTOMERS.map((c) => ({
-                      cells: [c.customer, c.orders, c.sales],
+                    title={tx({ en: "Recent driver submissions", ar: "أحدث قراءات السائقين" })}
+                    action={<ViewAll onClick={() => openModule("mileage")} />}
+                    headers={[tx({ en: "Driver", ar: "السائق" }), tx({ en: "Vehicle", ar: "المركبة" }), tx({ en: "Reading", ar: "القراءة" }), tx({ en: "Status", ar: "الحالة" })]}
+                    rows={MILEAGE.slice(0, 5).map((m) => ({
+                      key: m.id,
+                      cells: [driverName(m.driverId), plate(m.vehicleId), fmtKm(m.reading, language), status(m.status)],
                     }))}
-                  />
-                  <DataTable
-                    title="Warehouse Stock Status"
-                    headers={["Item", "Stock", "Status"]}
-                    rows={INVENTORY_STATUS.map((i) => ({
-                      cells: [
-                        i.item,
-                        i.stock,
-                        <StatusBadge key="s" status={i.status} />,
-                      ],
-                    }))}
-                  />
-                  <DataTable
-                    title="Balance Sheet"
-                    headers={["Item", "Amount"]}
-                    rows={[
-                      ...BALANCE_SHEET.assets.map((a) => ({
-                        cells: [a.item, a.amount],
-                      })),
-                      {
-                        cells: ["Total Assets", BALANCE_SHEET.totalAssets],
-                        tint: "blue" as const,
-                      },
-                      {
-                        cells: [
-                          "Total Liabilities",
-                          BALANCE_SHEET.totalLiabilities,
-                        ],
-                        tint: "red" as const,
-                      },
-                      {
-                        cells: ["Total Equity", BALANCE_SHEET.totalEquity],
-                        tint: "green" as const,
-                      },
-                    ]}
                   />
                 </motion.div>
               </motion.div>
@@ -496,10 +363,8 @@ export default function DashboardPage() {
 
       {/* Boot + module-opening loaders */}
       <AnimatePresence>
-        {booting && (
-          <Loader fullScreen label="Loading your dashboard…" />
-        )}
-        {opening && <Loader fullScreen label={`Opening ${opening}…`} />}
+        {booting && <Loader fullScreen label={t("loadingDashboard")} />}
+        {opening && <Loader fullScreen label={`${t("opening")} ${tx(MODULE_LABELS[opening])}…`} />}
       </AnimatePresence>
     </div>
   );

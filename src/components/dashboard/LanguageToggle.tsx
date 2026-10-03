@@ -6,7 +6,7 @@ import { useT } from "@/lib/translations";
 
 /**
  * AR/EN pill switch for the site-wide language (default Arabic, RTL).
- * Same interaction model as ThemeToggle — one click flips the stored
+ * Same interaction model as ThemeToggle: one click flips the stored
  * preference everywhere useLanguage() is read.
  */
 export default function LanguageToggle() {

@@ -3,14 +3,21 @@
 import { useEffect, useState } from "react";
 import ThemeToggle from "@/components/dashboard/ThemeToggle";
 import LanguageToggle from "@/components/dashboard/LanguageToggle";
+import NotificationsPopover from "@/components/dashboard/NotificationsPanel";
+import type { ModuleKey } from "@/lib/fleet-data";
 import { useT } from "@/lib/translations";
 
 type TopbarProps = {
   onToggleMobileSidebar: () => void;
+  /** Opens a module; enables the notifications bell. */
+  onNavigate?: (key: ModuleKey) => void;
 };
 
-function formatTime(d: Date) {
-  return d.toLocaleTimeString("en-US", {
+// Gregorian calendar + Latin digits in Arabic too.
+const LOCALE = { en: "en-US", ar: "ar-u-ca-gregory-nu-latn" } as const;
+
+function formatTime(d: Date, lang: keyof typeof LOCALE) {
+  return d.toLocaleTimeString(LOCALE[lang], {
     hour: "2-digit",
     minute: "2-digit",
     second: "2-digit",
@@ -18,18 +25,18 @@ function formatTime(d: Date) {
   });
 }
 
-function formatDate(d: Date) {
-  return d.toLocaleDateString("en-US", {
+function formatDate(d: Date, lang: keyof typeof LOCALE) {
+  return d.toLocaleDateString(LOCALE[lang], {
     weekday: "short",
     month: "short",
     day: "numeric",
   });
 }
 
-export default function Topbar({ onToggleMobileSidebar }: TopbarProps) {
+export default function Topbar({ onToggleMobileSidebar, onNavigate }: TopbarProps) {
   // Render a placeholder until mounted so SSR/client markup match
   const [now, setNow] = useState<Date | null>(null);
-  const { t } = useT();
+  const { t, language } = useT();
 
   useEffect(() => {
     const update = () => setNow(new Date());
@@ -74,21 +81,23 @@ export default function Topbar({ onToggleMobileSidebar }: TopbarProps) {
 
       {/* Live clock */}
       <div className="hidden flex-1 text-center md:block">
-        <p className="font-mono text-sm font-semibold tracking-widest text-foreground">
-          {now ? formatTime(now) : "--:--:-- --"}
+        <p className="font-mono text-sm font-semibold text-foreground ltr:tracking-widest">
+          {now ? formatTime(now, language) : "--:--:-- --"}
         </p>
         <p className="text-xs text-neutral-400 dark:text-neutral-500">
-          {now ? formatDate(now) : ""}
+          {now ? formatDate(now, language) : ""}
         </p>
       </div>
       <div className="flex-1 md:hidden" />
 
       <div className="hidden text-center sm:block">
-        <p className="text-[10px] uppercase tracking-widest text-neutral-400 dark:text-neutral-500">
+        <p className="text-[10px] text-neutral-400 ltr:uppercase ltr:tracking-widest dark:text-neutral-500">
           {t("version")}
         </p>
         <p className="text-xs font-semibold text-prime-600">1.0</p>
       </div>
+
+      {onNavigate && <NotificationsPopover onNavigate={onNavigate} />}
 
       <LanguageToggle />
       <ThemeToggle />

@@ -1,6 +1,11 @@
 @AGENTS.md
 
-# Prime Logistics — project conventions
+# Tareg fleet portal: project conventions
+
+Office web portal for Montaka's fleet (vehicles, drivers, kilometer readings,
+maintenance and approvals, accidents, violations, compliance expiries, fuel,
+expenses, history, reports). A driver-only mobile app is a separate deliverable.
+Scope comes from the Montaka fleet-management proposal.
 
 Follow these consistently across the whole app. When adding a new screen/form,
 check this list before reaching for a native HTML control or writing a new
@@ -27,15 +32,42 @@ extend the shared component rather than adding a local one-off.
 
 ## Other shared components to reuse
 
-- Loading state (button-local or full-screen) → [`GearLoader`](src/components/GearLoader.tsx)
+- Loading state (button-local or full-screen) → [`Loader`](src/components/Loader.tsx)
+  (full-screen variant draws the car from [`CarGlyph`](src/components/CarGlyph.tsx))
 - Any table → [`DataTable`](src/components/dashboard/DataTable.tsx) (supports
-  row tints, stable `key`s for animated insert/reorder/delete, and status
-  pills via `StatusBadge`)
+  row tints, stable `key`s, an `action` slot for "View all", and pills via
+  `Badge label tone` for translated statuses)
 - Placeholder for an unbuilt module → [`ComingSoon`](src/components/dashboard/ComingSoon.tsx)
 - Theme (`light`/`dark`) → the [`useTheme`](src/lib/useTheme.ts) hook, never
   read/write `localStorage("prime-theme")` or the `dark` class directly
 
+## Language: Arabic first, every string in both languages
+
+The interface is Arabic (RTL) by default with an English toggle, per the
+proposal. Never hardcode user-facing text:
+
+- Fixed UI strings → add a key to [`translations.ts`](src/lib/translations.ts)
+  in both `en` and `ar`, read with `t("key")`.
+- Data and per-screen copy → a `Bi` pair `{ en, ar }`, read with `tx(bi)`
+  (both from `useT()`).
+- Layout → logical utilities only (`ms/me`, `ps/pe`, `start/end`,
+  `border-s/e`, `text-start/end`), never `left/right`. No letter-spacing or
+  uppercase on Arabic (use `ltr:tracking-*`, `ltr:uppercase`).
+- Dates/money/km → `fmtDate`, `fmtSAR`, `fmtKm` in
+  [`fleet-data.ts`](src/lib/fleet-data.ts): Gregorian calendar, Latin digits, SAR.
+
+## Navigation and mock data
+
+Sidebar sections, module keys and all demo data live in
+[`fleet-data.ts`](src/lib/fleet-data.ts) (`NAV_SECTIONS`, `ModuleKey`).
+Each module screen is in [`FleetModules.tsx`](src/components/dashboard/FleetModules.tsx);
+add a module by adding a nav item and a case there. Statuses map to label + tone
+once in `STATUS`, never re-map inline. Mock dates are relative to today so
+expiry and overdue states stay realistic. Hide (don't delete) a module with
+`hidden: true` on its nav item; AI Reporting is hidden this way.
+`dashboard-data.ts` is legacy finance data kept only for the hidden AI Reporting.
+
 ## Verification habit
 
-After any UI change, check it in both themes (`ThemeToggle` in the topbar)
-and at mobile width (375px) before calling it done.
+After any UI change, check it in Arabic and English, in both themes
+(`ThemeToggle` in the topbar), and at mobile width (375px) before calling it done.

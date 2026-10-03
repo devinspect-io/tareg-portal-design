@@ -97,7 +97,7 @@ export default function HowItWorks() {
               }`}
               style={reduceMotion ? { scaleX: 1 } : { scaleX: progress }}
             />
-            {/* z-20 keeps the marker above the z-10 step badges — otherwise it
+            {/* z-20 keeps the marker above the z-10 step badges, otherwise it
                 vanishes behind each badge as it passes one. Travel stops short
                 of the track end by half the marker (10px) plus the badge radius
                 (24px) plus a small gap, so it pulls up at step 4 rather than

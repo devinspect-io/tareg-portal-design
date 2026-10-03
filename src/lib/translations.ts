@@ -29,13 +29,26 @@ interface Translations {
   switchToEnglish: string;
   switchToArabic: string;
   splashTagline: string;
+  logout: string;
+  loadingDashboard: string;
+  opening: string;
+  notifications: string;
+  filter: string;
+  clear: string;
+  viewAll: string;
+  quickActions: string;
+  comingSoonTitle: string;
+  comingSoonBody: string;
+  backToDashboard: string;
+  export: string;
+  search: string;
+  addNew: string;
 }
 
 /**
- * Minimal i18n dictionary. Scoped to the screens that are actually
- * language-aware today (login + the dashboard topbar/language toggle) —
- * the rest of the dashboard stays English until a full pass translates it.
- * Add new keys to Translations above, then both locales here.
+ * Fixed UI strings. Add new keys to Translations above, then both locales
+ * here. Mock/business data carries its own `Bi` pairs instead (see fleet-data)
+ * and is read with `tx()`.
  */
 const dict: Record<"en" | "ar", Translations> = {
   en: {
@@ -63,6 +76,20 @@ const dict: Record<"en" | "ar", Translations> = {
     switchToEnglish: "Switch to English",
     switchToArabic: "التبديل إلى العربية",
     splashTagline: "Speed. Precision. Delivered.",
+    logout: "Logout",
+    loadingDashboard: "Loading your dashboard…",
+    opening: "Opening",
+    notifications: "Notifications",
+    filter: "Filter",
+    clear: "Clear",
+    viewAll: "View all",
+    quickActions: "Quick Actions",
+    comingSoonTitle: "Coming Soon",
+    comingSoonBody: "This section is being built and will be available soon.",
+    backToDashboard: "Back to Dashboard",
+    export: "Export",
+    search: "Search",
+    addNew: "Add new",
   },
   ar: {
     brandName: "طارق",
@@ -89,14 +116,32 @@ const dict: Record<"en" | "ar", Translations> = {
     switchToEnglish: "Switch to English",
     switchToArabic: "التبديل إلى العربية",
     splashTagline: "سرعة. دقة. وصول.",
+    logout: "تسجيل الخروج",
+    loadingDashboard: "جارٍ تحميل لوحة التحكم…",
+    opening: "جارٍ فتح",
+    notifications: "الإشعارات",
+    filter: "تصفية",
+    clear: "مسح",
+    viewAll: "عرض الكل",
+    quickActions: "إجراءات سريعة",
+    comingSoonTitle: "قريبًا",
+    comingSoonBody: "هذا القسم قيد التطوير وسيكون متاحًا قريبًا.",
+    backToDashboard: "العودة إلى لوحة التحكم",
+    export: "تصدير",
+    search: "بحث",
+    addNew: "إضافة جديد",
   },
 };
 
 export type TranslationKey = keyof Translations;
 
-/** `const { t, language } = useT();` — `t("signIn")` reads from the current language. */
+/** A value in both languages, for data that isn't a fixed UI string. */
+export type Bi = { en: string; ar: string };
+
+/** `const { t, tx, language } = useT();`: `t("signIn")` for UI strings, `tx(bi)` for data. */
 export function useT() {
   const { language } = useLanguage();
   const t = <K extends TranslationKey>(key: K): Translations[K] => dict[language][key];
-  return { t, language };
+  const tx = (value: Bi) => value[language];
+  return { t, tx, language };
 }

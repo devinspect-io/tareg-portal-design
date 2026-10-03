@@ -17,7 +17,7 @@ function applyLanguage(lang: Language) {
   try {
     localStorage.setItem(STORAGE_KEY, lang);
   } catch {
-    // localStorage unavailable (private mode, etc.) — language just won't persist
+    // localStorage unavailable (private mode, etc.), so the language just won't persist
   }
   listeners.forEach((l) => l());
 }

@@ -14,11 +14,11 @@ const geistMono = Geist_Mono({
 
 export const metadata: Metadata = {
   title: "Tareg",
-  description: "Tareg — freight, warehousing, and fleet management across the UAE and Saudi Arabia.",
+  description: "Tareg: fleet management portal for vehicles, drivers, maintenance, compliance and expenses.",
 };
 
 // Runs before hydration so the correct theme/language paint on the very
-// first frame — no flash of the wrong theme or LTR-then-RTL flip. Kept tiny
+// first frame: no flash of the wrong theme or LTR-then-RTL flip. Kept tiny
 // and dependency-free. Default language is Arabic (RTL) when nothing has
 // been chosen yet, per product decision.
 const NO_FLASH_THEME_SCRIPT = `
