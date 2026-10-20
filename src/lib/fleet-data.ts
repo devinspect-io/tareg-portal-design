@@ -1,4 +1,4 @@
-// Navigation + mock data for the Tareg fleet portal (Montaka fleet proposal).
+// Navigation + mock data for the Tareg fleet portal (Tareq Al-Jaafari Contracting fleet proposal).
 // Everything here is demo data until the real backend exists. Dates are
 // generated relative to today so expiry/overdue states stay realistic.
 

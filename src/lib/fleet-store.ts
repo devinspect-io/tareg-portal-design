@@ -70,7 +70,7 @@ export type FleetSettings = {
 };
 
 const DEFAULT_SETTINGS: FleetSettings = {
-  companyName: "Montaka",
+  companyName: "Tareq Al-Jaafari Contracting",
   crNumber: "1010487213",
   contactEmail: "fleet@montaka.sa",
   contactPhone: "+966 11 482 6600",
