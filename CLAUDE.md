@@ -2,10 +2,10 @@
 
 # Tareg fleet portal: project conventions
 
-Office web portal for Montaka's fleet (vehicles, drivers, kilometer readings,
+Office web portal for Tareq Al-Jaafari Contracting's fleet (vehicles, drivers, kilometer readings,
 maintenance and approvals, accidents, violations, compliance expiries, fuel,
 expenses, history, reports). A driver-only mobile app is a separate deliverable.
-Scope comes from the Montaka fleet-management proposal.
+Scope comes from the Tareq Al-Jaafari Contracting fleet-management proposal.
 
 Follow these consistently across the whole app. When adding a new screen/form,
 check this list before reaching for a native HTML control or writing a new
