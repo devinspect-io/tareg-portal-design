@@ -71,3 +71,12 @@ expiry and overdue states stay realistic. Hide (don't delete) a module with
 
 After any UI change, check it in Arabic and English, in both themes
 (`ThemeToggle` in the topbar), and at mobile width (375px) before calling it done.
+
+## Backend API (tareg-backend, same API as the Tareg driver app)
+
+- Host ONLY from `NEXT_PUBLIC_API_BASE_URL` in `.env.local` (gitignored; see `.env.example`). API lives under `/api/v1`. Local dev: backend on :4000 started with `CORS_ORIGIN=http://localhost:3010`, portal on `next dev -p 3010`.
+- `src/lib/api/`: `client.ts` (fetch wrapper, `{data}` / `{error:{code,message,details}}` envelope, `ApiError`, token in localStorage `tareg.token`), `types.ts` (wire types), `session.ts` (signIn / restoreSession / signOut, `useSession`, `useCan("vehicles:manage")`, `useCanOpen(moduleKey)`), `hooks.ts` (`useApi`, `useApiPage`), `errors.ts` (the ONE code to bilingual message map: add new backend codes there).
+- Auth: `POST /auth/login {login, password}` (email or phone), 12h JWT, no refresh token, no logout endpoint. A 401 drops the session and `/dashboard` bounces to `/login`. Driver-audience accounts are refused (they use the mobile app).
+- The sidebar shows a module only when the role has `<module>:view` (Users & Roles: `users:view` or `roles:view`). Hide manage actions with `useCan`.
+- LIVE screens: `components/dashboard/live/` (Vehicles, Drivers, Assignments, Km Tracking, Users & Roles), built on `live/LiveKit.tsx` (LiveState, Pager, FormError, useDebounced, Refreshing) and `ModulePage.tsx` (Page, Block, Status, ExpiryCell). Their old mock views in FleetModules are PARKED, not deleted. Dashboard home: vehicle/driver/off-road counts and recent readings are live, the rest is still mock.
+- Every other module stays on mock data until its backend endpoints ship. Backend is read-only for us: report server bugs, don't fix them.

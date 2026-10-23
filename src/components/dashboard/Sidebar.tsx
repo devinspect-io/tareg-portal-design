@@ -7,6 +7,7 @@ import { useNotifications } from "@/lib/useNotifications";
 import { useT } from "@/lib/translations";
 import logoLight from "@/assets/logo-white-bg.png";
 import logoDark from "@/assets/logo-dark-bg.png";
+import { useCanOpen } from "@/lib/api/session";
 
 type SidebarProps = {
   active: ModuleKey;
@@ -164,6 +165,7 @@ function NavList({
 }: Pick<SidebarProps, "active" | "onSelect" | "onLogout">) {
   const { t, tx } = useT();
   const { unread } = useNotifications();
+  const canOpen = useCanOpen();
   const badges: Partial<Record<ModuleKey, number>> = { ...STATIC_BADGES, notifications: unread };
 
   return (
@@ -179,7 +181,7 @@ function NavList({
 
       <nav className="flex-1 overflow-y-auto py-2">
         {NAV_SECTIONS.map((section) => {
-          const items = section.items.filter((item) => !item.hidden);
+          const items = section.items.filter((item) => !item.hidden && canOpen(item.key));
           if (items.length === 0) return null;
           return (
             <div key={section.title.en} className="pb-1">

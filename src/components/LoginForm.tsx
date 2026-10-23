@@ -18,6 +18,8 @@ import RouteBackground from "@/components/RouteBackground";
 import Loader from "@/components/Loader";
 import LanguageToggle from "@/components/dashboard/LanguageToggle";
 import { useT } from "@/lib/translations";
+import { restoreSession, signIn, useSession } from "@/lib/api/session";
+import { errorText } from "@/lib/api/errors";
 
 type Status = "idle" | "loading" | "success";
 type Field = "email" | "password";
@@ -70,7 +72,9 @@ function EyeIcon({ off }: { off: boolean }) {
 
 export default function LoginForm() {
   const router = useRouter();
-  const { t } = useT();
+  const { t, tx } = useT();
+  const session = useSession();
+  const [submitError, setSubmitError] = useState<string | null>(null);
   const taglineWords = t("tagline");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -108,6 +112,14 @@ export default function LoginForm() {
     return () => clearInterval(id);
   }, [reduceMotion, taglineWords.length]);
 
+  // Already signed in (token still valid): skip the form.
+  useEffect(() => {
+    restoreSession();
+  }, []);
+  useEffect(() => {
+    if (session.status === "signedIn" && status === "idle") router.replace("/dashboard");
+  }, [session.status, status, router]);
+
   function handleMouseMove(e: React.MouseEvent) {
     mouseX.set(e.clientX / window.innerWidth);
     mouseY.set(e.clientY / window.innerHeight);
@@ -115,30 +127,44 @@ export default function LoginForm() {
     spotY.set(e.clientY);
   }
 
-  const hasError = errors.email || errors.password;
+  const expired = session.status === "signedOut" && session.expired;
+  const hasError = errors.email || errors.password || Boolean(submitError);
 
-  function handleSubmit(e: React.FormEvent) {
+  async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (status !== "idle") return;
 
-    // No credentials required — signing in always succeeds and goes straight
-    // to the dashboard.
+    const missing = { email: !email.trim(), password: !password };
+    if (missing.email || missing.password) {
+      setErrors(missing);
+      setSubmitError(null);
+      shakeControls.start({ x: [0, -10, 10, -6, 6, 0], transition: { duration: 0.4 } });
+      return;
+    }
+
     setErrors({ email: false, password: false });
+    setSubmitError(null);
     setStatus("loading");
-    // TODO: replace with real auth call
+    try {
+      await signIn(email, password);
+    } catch (err) {
+      setStatus("idle");
+      setErrors({ email: true, password: true });
+      setSubmitError(errorText(err, tx));
+      shakeControls.start({ x: [0, -10, 10, -6, 6, 0], transition: { duration: 0.4 } });
+      return;
+    }
+    setStatus("success");
+    // Card pulse on success
+    shakeControls.start({
+      scale: [1, 1.02, 1],
+      transition: { duration: 0.5 },
+    });
+    // Let the checkmark land, then show the loader and head to the dashboard
     setTimeout(() => {
-      setStatus("success");
-      // Card pulse on success
-      shakeControls.start({
-        scale: [1, 1.02, 1],
-        transition: { duration: 0.5 },
-      });
-      // Let the checkmark land, then show the loader and head to the dashboard
-      setTimeout(() => {
-        setRedirecting(true);
-        setTimeout(() => router.push("/dashboard"), 700);
-      }, 1400);
-    }, 1500);
+      setRedirecting(true);
+      setTimeout(() => router.push("/dashboard"), 700);
+    }, 900);
   }
 
   function fieldClasses(field: Field) {
@@ -245,13 +271,16 @@ export default function LoginForm() {
                 <input
                   id="email"
                   name="email"
-                  type="email"
+                  type="text"
+                  inputMode="email"
                   autoComplete="username"
-                  placeholder="you@example.com"
+                  placeholder="you@montaka.sa"
+                  dir="ltr"
                   value={email}
                   onChange={(e) => {
                     setEmail(e.target.value);
                     if (errors.email) setErrors((p) => ({ ...p, email: false }));
+                    setSubmitError(null);
                   }}
                   onFocus={() => setFocusedField("email")}
                   onBlur={() => setFocusedField(null)}
@@ -327,7 +356,18 @@ export default function LoginForm() {
                   exit={{ opacity: 0, height: 0 }}
                   className="overflow-hidden text-sm text-prime-600"
                 >
-                  {t("formError")}
+                  {submitError ?? t("formError")}
+                </motion.p>
+              )}
+              {!hasError && expired && (
+                <motion.p
+                  role="status"
+                  initial={{ opacity: 0, height: 0 }}
+                  animate={{ opacity: 1, height: "auto" }}
+                  exit={{ opacity: 0, height: 0 }}
+                  className="overflow-hidden text-sm text-neutral-500"
+                >
+                  {tx({ en: "Your session ended. Sign in again to continue.", ar: "انتهت جلستك. سجّل الدخول مرة أخرى للمتابعة." })}
                 </motion.p>
               )}
             </AnimatePresence>

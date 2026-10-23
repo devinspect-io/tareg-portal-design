@@ -16,15 +16,17 @@ import Loader from "@/components/Loader";
 import { primeChartOptions, PRIME_BLUE, ACCENT_ORANGE, CHART_COLORS } from "@/lib/chart-theme";
 import { useTheme } from "@/lib/useTheme";
 import { useT, type Bi } from "@/lib/translations";
+import { restoreSession, signOut, useCan, useSession } from "@/lib/api/session";
+import { api } from "@/lib/api/client";
+import { useApi } from "@/lib/api/hooks";
+import type { ApiMileage } from "@/lib/api/types";
 import type { Language } from "@/lib/useLanguage";
 import {
   APPROVALS,
   BREAKDOWNS,
-  DRIVERS,
   EXPENSES,
   EXPENSE_CATEGORIES,
   MAINTENANCE_COST,
-  MILEAGE,
   MODULE_LABELS,
   MONTHLY_KM,
   SCHEDULED_MAINTENANCE,
@@ -160,12 +162,40 @@ function ViewAll({ onClick }: { onClick: () => void }) {
   );
 }
 
+// ---------- Live figures ----------
+
+/** Pageless counts: ask for one row and read the total. */
+const count = (path: string, query: Record<string, string> = {}) => api.page(path, { ...query, pageSize: 1 }).then((p) => p.total);
+
+/**
+ * The home figures the backend can already answer. Each part is fetched only
+ * when the role can see that module; the rest of the dashboard is still mock.
+ */
+function useLiveHome(enabled: boolean) {
+  const can = useCan();
+  const vehicles = enabled && can("vehicles:view");
+  const drivers = enabled && can("drivers:view");
+  const mileage = enabled && can("mileage:view");
+  return useApi(async () => {
+    const [total, maint, broken, active, inReview, recent] = await Promise.all([
+      vehicles ? count("/vehicles") : null,
+      vehicles ? count("/vehicles", { status: "inMaintenance" }) : null,
+      vehicles ? count("/vehicles", { status: "brokenDown" }) : null,
+      drivers ? count("/drivers", { status: "active" }) : null,
+      mileage ? count("/mileage", { status: "inReview" }) : null,
+      mileage ? api.page<ApiMileage>("/mileage", { pageSize: 5, sort: "-date" }).then((p) => p.items) : null,
+    ]);
+    return { total, offRoad: maint === null || broken === null ? null : maint + broken, active, inReview, recent };
+  }, `${vehicles}${drivers}${mileage}`);
+}
+
 // ---------- Page ----------
 
 export default function DashboardPage() {
   const router = useRouter();
   const { theme } = useTheme();
   const { t, tx, language } = useT();
+  const session = useSession();
   const [booting, setBooting] = useState(true);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [view, setView] = useState<ModuleKey>("dashboard");
@@ -179,6 +209,17 @@ export default function DashboardPage() {
     const timer = setTimeout(() => setBooting(false), 1100);
     return () => clearTimeout(timer);
   }, []);
+
+  // Guard: no valid session means back to the sign-in page (also fires when
+  // the 12h token runs out mid-use and a call comes back 401).
+  useEffect(() => {
+    restoreSession();
+  }, []);
+  useEffect(() => {
+    if (session.status === "signedOut") router.replace("/login");
+  }, [session.status, router]);
+  const ready = !booting && session.status === "signedIn";
+  const live = useLiveHome(session.status === "signedIn").data;
 
   function openModule(key: ModuleKey) {
     if (key === "dashboard") {
@@ -199,7 +240,6 @@ export default function DashboardPage() {
   const expiring = compliance.filter((c) => expiryStatus(c.expiry) === "expiringSoon");
   const pendingApprovals = APPROVALS.filter((a) => a.status === "pending");
   const openBreakdowns = BREAKDOWNS.filter((b) => b.status !== "closed");
-  const offRoad = VEHICLES.filter((v) => v.status === "inMaintenance" || v.status === "brokenDown");
   const spend = EXPENSES.reduce((s, e) => s + e.amount, 0);
   const sarSuffix = language === "ar" ? " ر.س" : "";
   const sarPrefix = language === "ar" ? "" : "SAR ";
@@ -216,7 +256,10 @@ export default function DashboardPage() {
       <Sidebar
         active={view}
         onSelect={openModule}
-        onLogout={() => router.push("/login")}
+        onLogout={() => {
+          signOut();
+          router.push("/login");
+        }}
         mobileOpen={mobileOpen}
         onCloseMobile={() => setMobileOpen(false)}
       />
@@ -225,12 +268,12 @@ export default function DashboardPage() {
         <Topbar onToggleMobileSidebar={() => setMobileOpen((o) => !o)} onNavigate={openModule} />
 
         <main className="flex-1 px-4 py-6 sm:px-6">
-          {view === "ai-reporting" ? (
+          {!ready ? null : view === "ai-reporting" ? (
             <AiReportingView />
           ) : view !== "dashboard" ? (
             <FleetModule key={view} moduleKey={view} onNavigate={openModule} />
           ) : (
-            !booting && (
+            (
               <motion.div variants={container} initial="hidden" animate="visible" className="mx-auto max-w-7xl space-y-6">
                 {/* Header + filters */}
                 <motion.div variants={section} className="flex flex-wrap items-end justify-between gap-4">
@@ -267,9 +310,9 @@ export default function DashboardPage() {
 
                 {/* KPI cards: each opens the module it summarises */}
                 <motion.div variants={section} className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-                  <StatCard value={VEHICLES.length} sub={tx({ en: "Total vehicles", ar: "إجمالي المركبات" })} onClick={() => openModule("vehicles")} />
-                  <StatCard value={DRIVERS.filter((d) => d.status === "active").length} sub={tx({ en: "Active drivers", ar: "السائقون النشطون" })} onClick={() => openModule("drivers")} />
-                  <StatCard value={offRoad.length} sub={tx({ en: "Vehicles off the road", ar: "مركبات خارج الخدمة" })} tone="warn" onClick={() => openModule("maintenance")} />
+                  <StatCard value={live?.total ?? 0} sub={tx({ en: "Total vehicles", ar: "إجمالي المركبات" })} onClick={() => openModule("vehicles")} />
+                  <StatCard value={live?.active ?? 0} sub={tx({ en: "Active drivers", ar: "السائقون النشطون" })} onClick={() => openModule("drivers")} />
+                  <StatCard value={live?.offRoad ?? 0} sub={tx({ en: "Vehicles off the road", ar: "مركبات خارج الخدمة" })} tone="warn" onClick={() => openModule("maintenance")} />
                   <StatCard value={openBreakdowns.length} sub={tx({ en: "Open breakdowns", ar: "أعطال مفتوحة" })} tone="bad" onClick={() => openModule("breakdowns")} />
                   <StatCard value={pendingApprovals.length} sub={tx({ en: "Pending approvals", ar: "موافقات معلقة" })} tone="warn" onClick={() => openModule("approvals")} />
                   <StatCard value={expiring.length} sub={tx({ en: "Expiring in 30 days", ar: "تنتهي خلال 30 يومًا" })} tone="warn" onClick={() => openModule("compliance")} />
@@ -347,9 +390,10 @@ export default function DashboardPage() {
                     title={tx({ en: "Recent driver submissions", ar: "أحدث قراءات السائقين" })}
                     action={<ViewAll onClick={() => openModule("mileage")} />}
                     headers={[tx({ en: "Driver", ar: "السائق" }), tx({ en: "Vehicle", ar: "المركبة" }), tx({ en: "Reading", ar: "القراءة" }), tx({ en: "Status", ar: "الحالة" })]}
-                    rows={MILEAGE.slice(0, 5).map((m) => ({
+                    empty={tx({ en: "No readings yet.", ar: "لا توجد قراءات بعد." })}
+                    rows={(live?.recent ?? []).map((m) => ({
                       key: m.id,
-                      cells: [driverName(m.driverId), plate(m.vehicleId), fmtKm(m.reading, language), status(m.status)],
+                      cells: [m.driver ? tx(m.driver.name) : "-", <span key="p" dir="ltr">{m.vehicle?.plateNumber ?? "-"}</span>, fmtKm(m.reading, language), status(m.status)],
                     }))}
                   />
                 </motion.div>
@@ -363,7 +407,7 @@ export default function DashboardPage() {
 
       {/* Boot + module-opening loaders */}
       <AnimatePresence>
-        {booting && <Loader fullScreen label={t("loadingDashboard")} />}
+        {!ready && <Loader fullScreen label={t("loadingDashboard")} />}
         {opening && <Loader fullScreen label={`${t("opening")} ${tx(MODULE_LABELS[opening])}…`} />}
       </AnimatePresence>
     </div>

@@ -32,7 +32,8 @@ export function daysUntil(iso: string): number {
 const LOCALE: Record<Language, string> = { en: "en-GB", ar: "ar-u-ca-gregory-nu-latn" };
 
 export function fmtDate(iso: string, lang: Language): string {
-  const [y, m, d] = iso.split("-").map(Number);
+  // Accepts "yyyy-mm-dd" or a full ISO timestamp (API reviewedAt, lastLoginAt).
+  const [y, m, d] = iso.slice(0, 10).split("-").map(Number);
   return new Date(y, m - 1, d).toLocaleDateString(LOCALE[lang], {
     day: "numeric",
     month: "short",

@@ -6,6 +6,7 @@ import LanguageToggle from "@/components/dashboard/LanguageToggle";
 import NotificationsPopover from "@/components/dashboard/NotificationsPanel";
 import type { ModuleKey } from "@/lib/fleet-data";
 import { useT } from "@/lib/translations";
+import { useSession } from "@/lib/api/session";
 
 type TopbarProps = {
   onToggleMobileSidebar: () => void;
@@ -36,7 +37,10 @@ function formatDate(d: Date, lang: keyof typeof LOCALE) {
 export default function Topbar({ onToggleMobileSidebar, onNavigate }: TopbarProps) {
   // Render a placeholder until mounted so SSR/client markup match
   const [now, setNow] = useState<Date | null>(null);
-  const { t, language } = useT();
+  const { t, tx, language } = useT();
+  const session = useSession();
+  const me = session.status === "signedIn" ? session.session : null;
+  const myName = me ? tx(me.user.name) : "";
 
   useEffect(() => {
     const update = () => setNow(new Date());
@@ -104,11 +108,12 @@ export default function Topbar({ onToggleMobileSidebar, onNavigate }: TopbarProp
 
       {/* User chip */}
       <div className="flex items-center gap-2.5">
-        <div className="text-end">
-          <p className="text-sm font-semibold text-foreground">{t("superAdmin")}</p>
+        <div className="hidden text-end sm:block">
+          <p className="max-w-40 truncate text-sm font-semibold text-foreground">{myName}</p>
+          <p className="max-w-40 truncate text-xs text-neutral-400 dark:text-neutral-500">{me ? tx(me.role.name) : ""}</p>
         </div>
-        <div className="flex h-9 w-9 items-center justify-center rounded-full bg-prime-600 text-sm font-bold text-white">
-          S
+        <div title={myName} className="flex h-9 w-9 items-center justify-center rounded-full bg-prime-600 text-sm font-bold text-white">
+          {myName.trim().charAt(0).toUpperCase() || "·"}
         </div>
       </div>
     </header>
