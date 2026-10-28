@@ -274,7 +274,7 @@ export default function LoginForm() {
                   type="text"
                   inputMode="email"
                   autoComplete="username"
-                  placeholder="you@montaka.sa"
+                  placeholder="you@tareg.sa"
                   dir="ltr"
                   value={email}
                   onChange={(e) => {

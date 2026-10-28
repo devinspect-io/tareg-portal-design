@@ -636,12 +636,12 @@ export const ROLES: Record<RoleKey, { name: Bi; description: Bi }> = {
 export type OfficeUser = { name: Bi; email: string; role: RoleKey; lastActive: Bi; status: StatusCode };
 
 export const OFFICE_USERS: OfficeUser[] = [
-  { name: { en: "Turki Al-Saud", ar: "تركي آل سعود" }, email: "turki@montaka.sa", role: "superAdmin", lastActive: { en: "Online now", ar: "متصل الآن" }, status: "active" },
-  { name: { en: "Majed Al-Rashid", ar: "ماجد الراشد" }, email: "majed@montaka.sa", role: "fleetManager", lastActive: { en: "10 min ago", ar: "منذ 10 دقائق" }, status: "active" },
-  { name: { en: "Hessa Al-Anazi", ar: "حصة العنزي" }, email: "hessa@montaka.sa", role: "hr", lastActive: { en: "1 hour ago", ar: "منذ ساعة" }, status: "active" },
-  { name: { en: "Faisal Al-Ghamdi", ar: "فيصل الغامدي" }, email: "faisal@montaka.sa", role: "assistant", lastActive: { en: "Yesterday", ar: "أمس" }, status: "active" },
-  { name: { en: "Omar Al-Juhani", ar: "عمر الجهني" }, email: "omar@montaka.sa", role: "assistant", lastActive: { en: "3 days ago", ar: "منذ 3 أيام" }, status: "active" },
-  { name: { en: "Reem Al-Subaie", ar: "ريم السبيعي" }, email: "reem@montaka.sa", role: "hr", lastActive: { en: "2 weeks ago", ar: "منذ أسبوعين" }, status: "inactive" },
+  { name: { en: "Turki Al-Saud", ar: "تركي آل سعود" }, email: "turki@tareg.sa", role: "superAdmin", lastActive: { en: "Online now", ar: "متصل الآن" }, status: "active" },
+  { name: { en: "Majed Al-Rashid", ar: "ماجد الراشد" }, email: "majed@tareg.sa", role: "fleetManager", lastActive: { en: "10 min ago", ar: "منذ 10 دقائق" }, status: "active" },
+  { name: { en: "Hessa Al-Anazi", ar: "حصة العنزي" }, email: "hessa@tareg.sa", role: "hr", lastActive: { en: "1 hour ago", ar: "منذ ساعة" }, status: "active" },
+  { name: { en: "Faisal Al-Ghamdi", ar: "فيصل الغامدي" }, email: "faisal@tareg.sa", role: "assistant", lastActive: { en: "Yesterday", ar: "أمس" }, status: "active" },
+  { name: { en: "Omar Al-Juhani", ar: "عمر الجهني" }, email: "omar@tareg.sa", role: "assistant", lastActive: { en: "3 days ago", ar: "منذ 3 أيام" }, status: "active" },
+  { name: { en: "Reem Al-Subaie", ar: "ريم السبيعي" }, email: "reem@tareg.sa", role: "hr", lastActive: { en: "2 weeks ago", ar: "منذ أسبوعين" }, status: "inactive" },
 ];
 
 export type Access = "full" | "view" | "none";
