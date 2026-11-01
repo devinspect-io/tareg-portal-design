@@ -342,6 +342,7 @@ export default function DashboardPage() {
                 {/* Needs attention */}
                 <motion.div variants={section} className="grid grid-cols-1 gap-4 lg:grid-cols-2">
                   <DataTable
+                    searchable={false}
                     title={tx({ en: "Upcoming & overdue expiries", ar: "الوثائق المنتهية والقريبة من الانتهاء" })}
                     action={<ViewAll onClick={() => openModule("compliance")} />}
                     headers={[tx({ en: "Document", ar: "الوثيقة" }), tx({ en: "Holder", ar: "صاحب الوثيقة" }), tx({ en: "Expiry", ar: "الانتهاء" }), tx({ en: "Status", ar: "الحالة" })]}
@@ -351,6 +352,7 @@ export default function DashboardPage() {
                     }))}
                   />
                   <DataTable
+                    searchable={false}
                     title={tx({ en: "Pending approvals", ar: "الموافقات المعلقة" })}
                     action={<ViewAll onClick={() => openModule("approvals")} />}
                     headers={[tx({ en: "Request", ar: "الطلب" }), tx({ en: "Driver", ar: "السائق" }), tx({ en: "Amount", ar: "المبلغ" }), tx({ en: "Waiting on", ar: "بانتظار" })]}
@@ -378,6 +380,7 @@ export default function DashboardPage() {
                 {/* Operations */}
                 <motion.div variants={section} className="grid grid-cols-1 gap-4 lg:grid-cols-2">
                   <DataTable
+                    searchable={false}
                     title={tx({ en: "Upcoming maintenance", ar: "الصيانة القادمة" })}
                     action={<ViewAll onClick={() => openModule("maintenance")} />}
                     headers={[tx({ en: "Vehicle", ar: "المركبة" }), tx({ en: "Service", ar: "الخدمة" }), tx({ en: "Due", ar: "الاستحقاق" }), tx({ en: "Status", ar: "الحالة" })]}
@@ -387,6 +390,7 @@ export default function DashboardPage() {
                     }))}
                   />
                   <DataTable
+                    searchable={false}
                     title={tx({ en: "Recent driver submissions", ar: "أحدث قراءات السائقين" })}
                     action={<ViewAll onClick={() => openModule("mileage")} />}
                     headers={[tx({ en: "Driver", ar: "السائق" }), tx({ en: "Vehicle", ar: "المركبة" }), tx({ en: "Reading", ar: "القراءة" }), tx({ en: "Status", ar: "الحالة" })]}

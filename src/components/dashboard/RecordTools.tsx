@@ -108,6 +108,9 @@ export function EditButton({ onClick, label }: { onClick: () => void; label: str
   );
 }
 
+// Its label is an action ("Edit ACC-0001"), not row content: keep it out of table search.
+EditButton.searchText = () => "";
+
 /**
  * Labelled form row. A <div role="group"> rather than <label>: wrapping the
  * dropdown/date-picker buttons in a label makes clicks inside their popovers

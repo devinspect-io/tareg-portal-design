@@ -7,7 +7,7 @@ import { useCallback, useMemo, useState } from "react";
 import CustomSelect from "@/components/dashboard/CustomSelect";
 import DatePicker from "@/components/dashboard/DatePicker";
 import DataTable, { Badge } from "@/components/dashboard/DataTable";
-import { Block, Page, Status } from "@/components/dashboard/ModulePage";
+import { Block, Page, Status, toggleCard } from "@/components/dashboard/ModulePage";
 import { EditButton, Field, FilterBar, RecordModal, TextInput, Toast } from "@/components/dashboard/RecordTools";
 import { FormError, LiveState, Pager, Refreshing, useDebounced } from "@/components/dashboard/live/LiveKit";
 import { api } from "@/lib/api/client";
@@ -242,11 +242,15 @@ export default function DriversLive() {
     setPage(1);
   };
 
+  const pickStatus = (v: string) => {
+    setStatus(v);
+    setPage(1);
+  };
   const s = stats.data;
   const statList = [
-    { label: { en: "Total drivers", ar: "إجمالي السائقين" }, value: s ? String(s.total) : "-" },
-    { label: { en: "Active", ar: "نشطون" }, value: s ? String(s.active) : "-", tone: "good" as const },
-    { label: { en: "On leave", ar: "في إجازة" }, value: s ? String(s.onLeave) : "-" },
+    { label: { en: "Total drivers", ar: "إجمالي السائقين" }, value: s ? String(s.total) : "-", onClick: () => pickStatus("") },
+    { label: { en: "Active", ar: "نشطون" }, value: s ? String(s.active) : "-", tone: "good" as const, ...toggleCard(status, "active", pickStatus) },
+    { label: { en: "On leave", ar: "في إجازة" }, value: s ? String(s.onLeave) : "-", ...toggleCard(status, "onLeave", pickStatus) },
     ...(s && s.blocked !== null ? [{ label: { en: "Documents needing action", ar: "وثائق تحتاج إجراء" }, value: String(s.blocked), tone: "bad" as const }] : []),
   ];
 
@@ -379,6 +383,7 @@ export default function DriversLive() {
               <Refreshing on={list.fetching} />
               <DataTable
                 title={tx({ en: "Driver register", ar: "سجل السائقين" })}
+                searchable={false}
                 headers={headers}
                 rows={rows}
                 empty={tx({ en: "No drivers match these filters.", ar: "لا يوجد سائقون مطابقون لعوامل التصفية." })}

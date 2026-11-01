@@ -3,8 +3,9 @@
 // Shared shell for every module screen (mock and live): title row with the
 // primary action, the stat strip, and the staggered entrance variants.
 
+import { useState } from "react";
 import { motion } from "framer-motion";
-import { Badge } from "@/components/dashboard/DataTable";
+import { Badge, type SearchText } from "@/components/dashboard/DataTable";
 import { useT, type Bi } from "@/lib/translations";
 import { MODULE_LABELS, STATUS, expiryStatus, fmtDate, type ModuleKey, type StatusCode, type Tone } from "@/lib/fleet-data";
 
@@ -22,6 +23,7 @@ export function Status({ code }: { code: StatusCode }) {
   const { tx } = useT();
   return <Badge label={tx(STATUS[code].label)} tone={STATUS[code].tone} />;
 }
+Status.searchText = (({ code }, { tx }) => tx(STATUS[code].label)) satisfies SearchText<{ code: StatusCode }>;
 
 /** Date plus a status pill, for expiry columns. */
 export function ExpiryCell({ iso }: { iso: string }) {
@@ -34,8 +36,20 @@ export function ExpiryCell({ iso }: { iso: string }) {
     </span>
   );
 }
+ExpiryCell.searchText = (({ iso }, { tx, language }) => {
+  const code = expiryStatus(iso);
+  return `${fmtDate(iso, language)} ${code !== "valid" ? tx(STATUS[code].label) : ""}`;
+}) satisfies SearchText<{ iso: string }>;
 
-export type Stat = { label: Bi; value: string; tone?: Tone };
+export type Stat = {
+  label: Bi;
+  value: string;
+  tone?: Tone;
+  /** Makes the card a filter toggle for the grid below it. */
+  onClick?: () => void;
+  /** The grid is currently narrowed by this card. */
+  active?: boolean;
+};
 
 const STAT_EDGE: Record<Tone, string> = {
   good: "border-s-green-500",
@@ -45,21 +59,116 @@ const STAT_EDGE: Record<Tone, string> = {
   neutral: "border-s-prime-600",
 };
 
+/** Selected card: a ring and a wash in the card's own tone. */
+const STAT_ACTIVE: Record<Tone, string> = {
+  good: "ring-2 ring-green-500/50 bg-green-50/70 dark:bg-green-950/25",
+  warn: "ring-2 ring-accent-500/50 bg-accent-50/70 dark:bg-accent-950/25",
+  bad: "ring-2 ring-red-500/50 bg-red-50/70 dark:bg-red-950/25",
+  info: "ring-2 ring-prime-600/45 bg-prime-50/70 dark:bg-prime-950/30",
+  neutral: "ring-2 ring-prime-600/45 bg-prime-50/70 dark:bg-prime-950/30",
+};
+
+function FunnelIcon() {
+  return (
+    <svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M3 5h18l-7 8.5V19l-4 2v-7.5z" />
+    </svg>
+  );
+}
+
 export function StatStrip({ stats }: { stats: Stat[] }) {
   const { tx } = useT();
   return (
     <motion.div variants={section} className="grid grid-cols-2 gap-4 lg:grid-cols-4">
-      {stats.map((s) => (
-        <div
-          key={s.label.en}
-          className={`rounded-xl border border-s-4 border-neutral-100 bg-white p-4 shadow-sm dark:border-neutral-800 dark:bg-neutral-900 ${STAT_EDGE[s.tone ?? "neutral"]}`}
-        >
-          <p className="text-xl font-bold text-foreground sm:text-2xl">{s.value}</p>
-          <p className="mt-1 text-xs text-neutral-500 sm:text-sm dark:text-neutral-400">{tx(s.label)}</p>
-        </div>
-      ))}
+      {stats.map((s) => {
+        const tone = s.tone ?? "neutral";
+        const body = (
+          <>
+            <p className="text-xl font-bold text-foreground sm:text-2xl">{s.value}</p>
+            <p className="mt-1 text-xs text-neutral-500 sm:text-sm dark:text-neutral-400">{tx(s.label)}</p>
+          </>
+        );
+        const base = `rounded-xl border border-s-4 border-neutral-100 p-4 shadow-sm dark:border-neutral-800 ${STAT_EDGE[tone]}`;
+        if (!s.onClick) {
+          return (
+            <div key={s.label.en} className={`${base} bg-white dark:bg-neutral-900`}>
+              {body}
+            </div>
+          );
+        }
+        return (
+          <motion.button
+            key={s.label.en}
+            type="button"
+            onClick={s.onClick}
+            aria-pressed={s.active ?? false}
+            whileHover={{ y: -2 }}
+            whileTap={{ scale: 0.98 }}
+            transition={{ type: "spring", stiffness: 320, damping: 22 }}
+            className={`group relative cursor-pointer text-start outline-none transition-[box-shadow,background-color] hover:shadow-md focus-visible:ring-4 focus-visible:ring-prime-500/20 ${base} ${
+              s.active ? STAT_ACTIVE[tone] : "bg-white dark:bg-neutral-900"
+            }`}
+          >
+            <span
+              className={`absolute end-3 top-3 transition-opacity ${
+                s.active ? "text-foreground opacity-80" : "text-neutral-400 opacity-0 group-hover:opacity-100 group-focus-visible:opacity-100"
+              }`}
+            >
+              <FunnelIcon />
+            </span>
+            {body}
+          </motion.button>
+        );
+      })}
     </motion.div>
   );
+}
+
+/** One stat card that can narrow the grid. */
+export type CardFilter<T> = {
+  /** Cards sharing an id light up together (e.g. "Unpaid fines" and "Unpaid amount"). */
+  id: string;
+  label: Bi;
+  tone?: Tone;
+  /** Shown figure; defaults to how many items the card matches. */
+  value?: string;
+  /** The rows this card narrows the grid to. Omit for a card that only reports (money, averages). */
+  test?: (item: T) => boolean;
+  /** A totals card: clicking it shows everything again. */
+  all?: boolean;
+};
+
+/**
+ * Stat cards that filter a client-side list. Clicking a card narrows the rows
+ * to what it counts; clicking it again (or the totals card, or the chip on the
+ * table) shows everything.
+ *
+ *   const cards = useCardFilter(BREAKDOWNS, [{ id: "open", label, tone, test: (b) => b.status === "open" }]);
+ *   <Page stats={cards.stats}> <DataTable rows={cards.rows.map(...)} filter={cards.filter} />
+ */
+export function useCardFilter<T>(items: T[], cards: CardFilter<T>[]) {
+  const { tx } = useT();
+  const [active, setActive] = useState<string | null>(null);
+  const current = cards.find((c) => c.id === active && c.test);
+  const clear = () => setActive(null);
+  const stats: Stat[] = cards.map((c) => ({
+    label: c.label,
+    tone: c.tone,
+    value: c.value ?? String(c.test ? items.filter(c.test).length : items.length),
+    active: Boolean(c.test) && current?.id === c.id,
+    onClick: c.all ? clear : c.test ? () => setActive((a) => (a === c.id ? null : c.id)) : undefined,
+  }));
+  return {
+    stats,
+    rows: current?.test ? items.filter(current.test) : items,
+    active: current?.id ?? null,
+    filter: current ? { label: tx(current.label), onClear: clear } : undefined,
+  };
+}
+
+/** Card wiring for a filter that already lives in a dropdown: selects `value`, or clears it when picked again. */
+export function toggleCard(current: string, value: string, set: (v: string) => void) {
+  return { active: current === value, onClick: () => set(current === value ? "" : value) };
 }
 
 export function Page({

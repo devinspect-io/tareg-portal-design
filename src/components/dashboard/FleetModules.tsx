@@ -17,7 +17,7 @@ import MileageLive from "@/components/dashboard/live/MileageLive";
 import UsersLive from "@/components/dashboard/live/UsersLive";
 import DriversLive from "@/components/dashboard/live/DriversLive";
 import AssignmentsLive from "@/components/dashboard/live/AssignmentsLive";
-import { Block, ExpiryCell, Page, Status, section } from "@/components/dashboard/ModulePage";
+import { Block, ExpiryCell, Page, Status, section, toggleCard, useCardFilter } from "@/components/dashboard/ModulePage";
 import {
   ACCIDENTS,
   APPROVALS,
@@ -316,21 +316,36 @@ function MaintenanceView() {
   const names = useNames();
   const statuses = SCHEDULED_MAINTENANCE.map((m) => dueStatus(m.dueDate));
   const spend = MAINTENANCE_RECORDS.reduce((sum, r) => sum + r.cost, 0);
+  // "Due" cards narrow the schedule, "In the workshop" narrows the records.
+  const [card, setCard] = useState<"" | "dueSoon" | "overdue" | "inProgress">("");
+  const pick = (id: typeof card) => ({ active: card === id, onClick: () => setCard(card === id ? "" : id) });
+  const scheduled =
+    card === "" ? SCHEDULED_MAINTENANCE : card === "inProgress" ? [] : SCHEDULED_MAINTENANCE.filter((m) => dueStatus(m.dueDate) === card);
+  const records =
+    card === "" ? MAINTENANCE_RECORDS : card === "inProgress" ? MAINTENANCE_RECORDS.filter((r) => r.status === "inProgress") : [];
+  const chipLabel = {
+    dueSoon: tx({ en: "Due in 14 days", ar: "تستحق خلال 14 يومًا" }),
+    overdue: tx({ en: "Overdue", ar: "متأخرة" }),
+    inProgress: tx({ en: "In the workshop", ar: "في الورشة" }),
+  };
+  const chip = card ? { label: chipLabel[card], onClear: () => setCard("") } : undefined;
   return (
     <Page
       moduleKey="maintenance"
       subtitle={{ en: "Scheduled service, repairs, battery and tire replacements, with workshop costs.", ar: "الصيانة المجدولة والإصلاحات وتغيير البطاريات والإطارات مع تكاليف الورش." }}
       primaryAction={{ en: "Record maintenance", ar: "تسجيل صيانة" }}
       stats={[
-        { label: { en: "Due in 14 days", ar: "تستحق خلال 14 يومًا" }, value: String(statuses.filter((s) => s === "dueSoon").length), tone: "warn" },
-        { label: { en: "Overdue", ar: "متأخرة" }, value: String(statuses.filter((s) => s === "overdue").length), tone: "bad" },
-        { label: { en: "In the workshop", ar: "في الورشة" }, value: String(MAINTENANCE_RECORDS.filter((r) => r.status === "inProgress").length) },
+        { label: { en: "Due in 14 days", ar: "تستحق خلال 14 يومًا" }, value: String(statuses.filter((s) => s === "dueSoon").length), tone: "warn", ...pick("dueSoon") },
+        { label: { en: "Overdue", ar: "متأخرة" }, value: String(statuses.filter((s) => s === "overdue").length), tone: "bad", ...pick("overdue") },
+        { label: { en: "In the workshop", ar: "في الورشة" }, value: String(MAINTENANCE_RECORDS.filter((r) => r.status === "inProgress").length), ...pick("inProgress") },
         { label: { en: "Spend (last 30 days)", ar: "الإنفاق (آخر 30 يومًا)" }, value: fmtSAR(spend, language) },
       ]}
     >
+      {scheduled.length > 0 || !card ? (
       <Block>
         <DataTable
           title={tx({ en: "Upcoming maintenance", ar: "الصيانة القادمة" })}
+          filter={chip}
           headers={[
             tx({ en: "Vehicle", ar: "المركبة" }),
             tx({ en: "Service", ar: "الخدمة" }),
@@ -338,15 +353,18 @@ function MaintenanceView() {
             tx({ en: "Due at", ar: "عند العداد" }),
             tx({ en: "Status", ar: "الحالة" }),
           ]}
-          rows={SCHEDULED_MAINTENANCE.map((m, i) => ({
-            key: `sm-${i}`,
+          rows={scheduled.map((m) => ({
+            key: `sm-${m.vehicleId}-${m.dueDate}-${m.task.en}`,
             cells: [names.vehicleFull(m.vehicleId), tx(m.task), fmtDate(m.dueDate, language), fmtKm(m.dueKm, language), <Status key="s" code={dueStatus(m.dueDate)} />],
           }))}
         />
       </Block>
+      ) : null}
+      {records.length > 0 || !card ? (
       <Block>
         <DataTable
           title={tx({ en: "Maintenance records", ar: "سجل الصيانة" })}
+          filter={chip}
           headers={[
             tx({ en: "Ref.", ar: "المرجع" }),
             tx({ en: "Date", ar: "التاريخ" }),
@@ -357,7 +375,7 @@ function MaintenanceView() {
             tx({ en: "Type", ar: "النوع" }),
             tx({ en: "Status", ar: "الحالة" }),
           ]}
-          rows={MAINTENANCE_RECORDS.map((r) => ({
+          rows={records.map((r) => ({
             key: r.id,
             cells: [
               r.id,
@@ -376,6 +394,7 @@ function MaintenanceView() {
           }))}
         />
       </Block>
+      ) : null}
     </Page>
   );
 }
@@ -383,21 +402,23 @@ function MaintenanceView() {
 function BreakdownsView() {
   const { tx, language } = useT();
   const names = useNames();
+  const cards = useCardFilter(BREAKDOWNS, [
+    { id: "open", label: { en: "Open", ar: "مفتوحة" }, tone: "bad", test: (b) => b.status === "open" },
+    { id: "inProgress", label: { en: "In progress", ar: "قيد المعالجة" }, tone: "warn", test: (b) => b.status === "inProgress" },
+    { id: "major", label: { en: "Major breakdowns", ar: "أعطال كبيرة" }, test: (b) => b.major },
+    { id: "closed", label: { en: "Closed", ar: "مغلقة" }, tone: "good", test: (b) => b.status === "closed" },
+  ]);
   return (
     <Page
       moduleKey="breakdowns"
       subtitle={{ en: "Roadside breakdowns and emergency repairs reported by drivers.", ar: "الأعطال على الطريق والإصلاحات الطارئة المبلغ عنها من السائقين." }}
       primaryAction={{ en: "Record breakdown", ar: "تسجيل عطل" }}
-      stats={[
-        { label: { en: "Open", ar: "مفتوحة" }, value: String(BREAKDOWNS.filter((b) => b.status === "open").length), tone: "bad" },
-        { label: { en: "In progress", ar: "قيد المعالجة" }, value: String(BREAKDOWNS.filter((b) => b.status === "inProgress").length), tone: "warn" },
-        { label: { en: "Major breakdowns", ar: "أعطال كبيرة" }, value: String(BREAKDOWNS.filter((b) => b.major).length) },
-        { label: { en: "Closed", ar: "مغلقة" }, value: String(BREAKDOWNS.filter((b) => b.status === "closed").length), tone: "good" },
-      ]}
+      stats={cards.stats}
     >
       <Block>
         <DataTable
           title={tx({ en: "Breakdown log", ar: "سجل الأعطال" })}
+          filter={cards.filter}
           headers={[
             tx({ en: "Ref.", ar: "المرجع" }),
             tx({ en: "Date", ar: "التاريخ" }),
@@ -408,7 +429,7 @@ function BreakdownsView() {
             tx({ en: "Severity", ar: "الخطورة" }),
             tx({ en: "Status", ar: "الحالة" }),
           ]}
-          rows={BREAKDOWNS.map((b) => ({
+          rows={cards.rows.map((b) => ({
             key: b.id,
             cells: [
               b.id,
@@ -458,19 +479,24 @@ function ApprovalChain({ steps }: { steps: ApprovalStep[] }) {
 function ApprovalsView() {
   const { tx, language } = useT();
   const names = useNames();
-  const pending = APPROVALS.filter((a) => a.status === "pending");
-  const decided = APPROVALS.filter((a) => a.status !== "pending");
+  const cards = useCardFilter(APPROVALS, [
+    { id: "pending", label: { en: "Pending", ar: "قيد الانتظار" }, tone: "warn", test: (a) => a.status === "pending" },
+    { id: "fleetManager", label: { en: "Waiting on Fleet Manager", ar: "بانتظار مدير الأسطول" }, tone: "warn", test: (a) => a.status === "pending" && a.steps[2]?.state === "current" },
+    { id: "approved", label: { en: "Approved", ar: "معتمدة" }, tone: "good", test: (a) => a.status === "approved" },
+    { id: "rejected", label: { en: "Rejected", ar: "مرفوضة" }, tone: "bad", test: (a) => a.status === "rejected" },
+  ]);
+  const pending = cards.rows.filter((a) => a.status === "pending");
+  const decided = cards.rows.filter((a) => a.status !== "pending");
+  // A card narrows to one side: hide the section it empties rather than show a blank one.
+  const showPending = !cards.active || pending.length > 0;
+  const showDecided = !cards.active || decided.length > 0;
   return (
     <Page
       moduleKey="approvals"
       subtitle={{ en: "Driver requests move through Driver → Assistant → Fleet Manager before work proceeds.", ar: "تمر طلبات السائقين عبر السائق ← المساعد ← مدير الأسطول قبل تنفيذ العمل." }}
-      stats={[
-        { label: { en: "Pending", ar: "قيد الانتظار" }, value: String(pending.length), tone: "warn" },
-        { label: { en: "Waiting on Fleet Manager", ar: "بانتظار مدير الأسطول" }, value: String(pending.filter((a) => a.steps[2]?.state === "current").length), tone: "warn" },
-        { label: { en: "Approved", ar: "معتمدة" }, value: String(APPROVALS.filter((a) => a.status === "approved").length), tone: "good" },
-        { label: { en: "Rejected", ar: "مرفوضة" }, value: String(APPROVALS.filter((a) => a.status === "rejected").length), tone: "bad" },
-      ]}
+      stats={cards.stats}
     >
+      {showPending && (
       <motion.div variants={section} className="space-y-3">
         <h2 className="text-sm font-semibold text-foreground">{tx({ en: "Waiting for a decision", ar: "بانتظار القرار" })}</h2>
         {pending.map((a) => (
@@ -499,9 +525,12 @@ function ApprovalsView() {
           </div>
         ))}
       </motion.div>
+      )}
+      {showDecided && (
       <Block>
         <DataTable
           title={tx({ en: "Decided requests", ar: "الطلبات المحسومة" })}
+          filter={cards.filter}
           headers={[
             tx({ en: "Ref.", ar: "المرجع" }),
             tx({ en: "Request", ar: "الطلب" }),
@@ -517,6 +546,7 @@ function ApprovalsView() {
           }))}
         />
       </Block>
+      )}
     </Page>
   );
 }
@@ -601,9 +631,9 @@ function AccidentsView() {
       primaryAction={{ en: "Record accident", ar: "تسجيل حادث" }}
       onPrimaryAction={openNew}
       stats={[
-        { label: { en: "Open", ar: "مفتوحة" }, value: String(items.filter((a) => a.status === "open").length), tone: "bad" },
-        { label: { en: "In review", ar: "قيد المراجعة" }, value: String(items.filter((a) => a.status === "inReview").length), tone: "warn" },
-        { label: { en: "This year", ar: "هذا العام" }, value: String(items.length) },
+        { label: { en: "Open", ar: "مفتوحة" }, value: String(items.filter((a) => a.status === "open").length), tone: "bad", ...toggleCard(status, "open", setStatus) },
+        { label: { en: "In review", ar: "قيد المراجعة" }, value: String(items.filter((a) => a.status === "inReview").length), tone: "warn", ...toggleCard(status, "inReview", setStatus) },
+        { label: { en: "This year", ar: "هذا العام" }, value: String(items.length), onClick: () => setStatus("") },
         { label: { en: "Repair costs", ar: "تكاليف الإصلاح" }, value: fmtSAR(items.reduce((s, a) => s + a.cost, 0), language) },
       ]}
     >
@@ -636,6 +666,7 @@ function AccidentsView() {
       <Block>
         <DataTable
           title={tx({ en: "Accident log", ar: "سجل الحوادث" })}
+          searchable={false}
           empty={tx({ en: "No accidents match these filters.", ar: "لا توجد حوادث مطابقة لعوامل التصفية." })}
           headers={[
             tx({ en: "Ref.", ar: "المرجع" }),
@@ -723,21 +754,24 @@ function ViolationsView() {
   const { tx, language } = useT();
   const names = useNames();
   const unpaid = VIOLATIONS.filter((v) => v.status === "unpaid");
+  const isUnpaid = (v: (typeof VIOLATIONS)[number]) => v.status === "unpaid";
+  const cards = useCardFilter(VIOLATIONS, [
+    { id: "unpaid", label: { en: "Unpaid fines", ar: "مخالفات غير مدفوعة" }, tone: "bad", test: isUnpaid },
+    { id: "unpaid", label: { en: "Unpaid amount", ar: "المبلغ غير المدفوع" }, tone: "bad", value: fmtSAR(unpaid.reduce((s, v) => s + v.fine, 0), language), test: isUnpaid },
+    { id: "all", label: { en: "This month", ar: "هذا الشهر" }, all: true },
+    { id: "paid", label: { en: "Paid", ar: "مدفوعة" }, tone: "good", test: (v) => v.status === "paid" },
+  ]);
   return (
     <Page
       moduleKey="violations"
       subtitle={{ en: "Traffic fines recorded against the responsible driver and vehicle.", ar: "المخالفات المرورية المسجلة على السائق والمركبة المسؤولين." }}
       primaryAction={{ en: "Record violation", ar: "تسجيل مخالفة" }}
-      stats={[
-        { label: { en: "Unpaid fines", ar: "مخالفات غير مدفوعة" }, value: String(unpaid.length), tone: "bad" },
-        { label: { en: "Unpaid amount", ar: "المبلغ غير المدفوع" }, value: fmtSAR(unpaid.reduce((s, v) => s + v.fine, 0), language), tone: "bad" },
-        { label: { en: "This month", ar: "هذا الشهر" }, value: String(VIOLATIONS.length) },
-        { label: { en: "Paid", ar: "مدفوعة" }, value: String(VIOLATIONS.filter((v) => v.status === "paid").length), tone: "good" },
-      ]}
+      stats={cards.stats}
     >
       <Block>
         <DataTable
           title={tx({ en: "Violation log", ar: "سجل المخالفات" })}
+          filter={cards.filter}
           headers={[
             tx({ en: "Ref.", ar: "المرجع" }),
             tx({ en: "Date", ar: "التاريخ" }),
@@ -748,7 +782,7 @@ function ViolationsView() {
             tx({ en: "Fine", ar: "الغرامة" }),
             tx({ en: "Status", ar: "الحالة" }),
           ]}
-          rows={VIOLATIONS.map((v) => ({
+          rows={cards.rows.map((v) => ({
             key: v.id,
             cells: [v.id, fmtDate(v.date, language), tx(v.type), names.driver(v.driverId), names.vehicle(v.vehicleId), tx(v.location), fmtSAR(v.fine, language), <Status key="s" code={v.status} />],
           }))}
@@ -763,8 +797,15 @@ function ViolationsView() {
 function ComplianceView() {
   const { tx, language } = useT();
   const items = complianceItems();
-  const count = (s: StatusCode) => items.filter((i) => expiryStatus(i.expiry) === s).length;
-  const needsAction = items.filter((i) => expiryStatus(i.expiry) !== "valid");
+  const is = (s: StatusCode) => (i: (typeof items)[number]) => expiryStatus(i.expiry) === s;
+  const cards = useCardFilter(items, [
+    { id: "expired", label: { en: "Expired", ar: "منتهية" }, tone: "bad", test: is("expired") },
+    { id: "expiringSoon", label: { en: "Expiring in 30 days", ar: "تنتهي خلال 30 يومًا" }, tone: "warn", test: is("expiringSoon") },
+    { id: "valid", label: { en: "Valid", ar: "سارية" }, tone: "good", test: is("valid") },
+    { id: "all", label: { en: "Documents tracked", ar: "الوثائق المتابعة" }, all: true },
+  ]);
+  const needsAction = cards.rows.filter((i) => expiryStatus(i.expiry) !== "valid");
+  const valid = cards.rows.filter((i) => expiryStatus(i.expiry) === "valid");
   const toRow = (i: (typeof items)[number], k: number): TableRow => {
     const left = daysUntil(i.expiry);
     return {
@@ -793,23 +834,23 @@ function ComplianceView() {
     <Page
       moduleKey="compliance"
       subtitle={{ en: "Licenses, Iqamas, registrations, insurance and inspections, with expiry alerts.", ar: "الرخص والإقامات والاستمارات والتأمين والفحص الدوري مع تنبيهات الانتهاء." }}
-      stats={[
-        { label: { en: "Expired", ar: "منتهية" }, value: String(count("expired")), tone: "bad" },
-        { label: { en: "Expiring in 30 days", ar: "تنتهي خلال 30 يومًا" }, value: String(count("expiringSoon")), tone: "warn" },
-        { label: { en: "Valid", ar: "سارية" }, value: String(count("valid")), tone: "good" },
-        { label: { en: "Documents tracked", ar: "الوثائق المتابعة" }, value: String(items.length) },
-      ]}
+      stats={cards.stats}
     >
-      <Block>
-        <DataTable title={tx({ en: "Needs action", ar: "تحتاج إجراء" })} headers={headers} rows={needsAction.map(toRow)} />
-      </Block>
-      <Block>
-        <DataTable
-          title={tx({ en: "All tracked documents", ar: "جميع الوثائق المتابعة" })}
-          headers={headers}
-          rows={items.filter((i) => expiryStatus(i.expiry) === "valid").map((i, k) => toRow(i, k + 1000))}
-        />
-      </Block>
+      {(!cards.active || needsAction.length > 0) && (
+        <Block>
+          <DataTable title={tx({ en: "Needs action", ar: "تحتاج إجراء" })} filter={cards.filter} headers={headers} rows={needsAction.map(toRow)} />
+        </Block>
+      )}
+      {(!cards.active || valid.length > 0) && (
+        <Block>
+          <DataTable
+            title={tx({ en: "All tracked documents", ar: "جميع الوثائق المتابعة" })}
+            filter={cards.filter}
+            headers={headers}
+            rows={valid.map((i, k) => toRow(i, k + 1000))}
+          />
+        </Block>
+      )}
     </Page>
   );
 }
@@ -889,11 +930,13 @@ function ExpensesView() {
   const [vehicle, setVehicle] = useState("");
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
+  const [missingOnly, setMissingOnly] = useState(false);
   const [draft, setDraft] = useState<ExpenseDraft | null>(null);
   const original = draft ? items.find((e) => e.id === draft.id) : undefined;
 
   const q = search.trim().toLowerCase();
   const filtered = items.filter((e) => {
+    if (missingOnly && e.attachment) return false;
     const haystack = [e.id, e.vendor.en, e.vendor.ar, names.vehicle(e.vehicleId)].join(" ").toLowerCase();
     return (
       (!q || haystack.includes(q)) &&
@@ -928,10 +971,17 @@ function ExpensesView() {
       primaryAction={{ en: "Add expense", ar: "إضافة مصروف" }}
       onPrimaryAction={openNew}
       stats={[
-        { label: { en: "Spend (last 30 days)", ar: "الإنفاق (آخر 30 يومًا)" }, value: fmtSAR(total, language) },
-        { label: { en: "Unpaid invoices", ar: "فواتير غير مدفوعة" }, value: String(unpaid.length), tone: "bad" },
-        { label: { en: "Unpaid amount", ar: "المبلغ غير المدفوع" }, value: fmtSAR(unpaid.reduce((s, e) => s + e.amount, 0), language), tone: "bad" },
-        { label: { en: "Missing attachment", ar: "بدون مرفق" }, value: String(items.filter((e) => !e.attachment).length), tone: "warn" },
+        {
+          label: { en: "Spend (last 30 days)", ar: "الإنفاق (آخر 30 يومًا)" },
+          value: fmtSAR(total, language),
+          onClick: () => {
+            setStatus("");
+            setMissingOnly(false);
+          },
+        },
+        { label: { en: "Unpaid invoices", ar: "فواتير غير مدفوعة" }, value: String(unpaid.length), tone: "bad", ...toggleCard(status, "unpaid", setStatus) },
+        { label: { en: "Unpaid amount", ar: "المبلغ غير المدفوع" }, value: fmtSAR(unpaid.reduce((s, e) => s + e.amount, 0), language), tone: "bad", ...toggleCard(status, "unpaid", setStatus) },
+        { label: { en: "Missing attachment", ar: "بدون مرفق" }, value: String(items.filter((e) => !e.attachment).length), tone: "warn", active: missingOnly, onClick: () => setMissingOnly((m) => !m) },
       ]}
     >
       <Block>
@@ -957,12 +1007,15 @@ function ExpensesView() {
             setVehicle("");
             setFrom("");
             setTo("");
+            setMissingOnly(false);
           }}
         />
       </Block>
       <Block>
         <DataTable
           title={tx({ en: "Invoices", ar: "الفواتير" })}
+          searchable={false}
+          filter={missingOnly ? { label: tx({ en: "Missing attachment", ar: "بدون مرفق" }), onClear: () => setMissingOnly(false) } : undefined}
           empty={tx({ en: "No invoices match these filters.", ar: "لا توجد فواتير مطابقة لعوامل التصفية." })}
           headers={[
             tx({ en: "Invoice", ar: "الفاتورة" }),

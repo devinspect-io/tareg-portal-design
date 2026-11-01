@@ -7,7 +7,7 @@ import { useCallback, useMemo, useState } from "react";
 import { motion } from "framer-motion";
 import CustomSelect from "@/components/dashboard/CustomSelect";
 import DataTable, { Badge } from "@/components/dashboard/DataTable";
-import { Block, Page, section, type Stat } from "@/components/dashboard/ModulePage";
+import { Block, Page, section, toggleCard, type Stat } from "@/components/dashboard/ModulePage";
 import { EditButton, Field, FilterBar, RecordModal, TextArea, TextInput, Toast, Toggle } from "@/components/dashboard/RecordTools";
 import { FormError, LiveState, Pager, Refreshing, useDebounced } from "@/components/dashboard/live/LiveKit";
 import { api } from "@/lib/api/client";
@@ -145,6 +145,12 @@ export default function UsersLive() {
   const [userModal, setUserModal] = useState<ApiUser | "new" | null>(null);
   const [roleModal, setRoleModal] = useState<ApiRole | "new" | null>(null);
   const [usersTick, setUsersTick] = useState(0);
+  // Lives here, not in the tab, so the stat cards can set it.
+  const [userStatus, setUserStatus] = useState("");
+  const showUsers = (status: string) => {
+    setUserStatus(status);
+    setTab("users");
+  };
 
   const roleList = useMemo(() => roles.data ?? [], [roles.data]);
   const refreshAll = () => {
@@ -161,8 +167,13 @@ export default function UsersLive() {
   const stats: Stat[] = [
     ...(canUsers
       ? [
-          { label: { en: "Total users", ar: "إجمالي المستخدمين" }, value: total === undefined ? "-" : String(total) },
-          { label: { en: "Active", ar: "نشطون" }, value: active === undefined ? "-" : String(active), tone: "good" as const },
+          { label: { en: "Total users", ar: "إجمالي المستخدمين" }, value: total === undefined ? "-" : String(total), onClick: () => showUsers("") },
+          {
+            label: { en: "Active", ar: "نشطون" },
+            value: active === undefined ? "-" : String(active),
+            tone: "good" as const,
+            ...toggleCard(tab === "users" ? userStatus : "", "active", showUsers),
+          },
         ]
       : []),
     ...(canRoles
@@ -200,7 +211,7 @@ export default function UsersLive() {
           </Block>
         )}
         {tab === "users" ? (
-          <UsersTab roles={roleList} canRoles={canRoles} tick={usersTick} onEdit={(u) => setUserModal(u)} />
+          <UsersTab roles={roleList} canRoles={canRoles} tick={usersTick} status={userStatus} onStatus={setUserStatus} onEdit={(u) => setUserModal(u)} />
         ) : (
           <RolesTab roles={roles} catalog={catalog.data ?? []} onEdit={(r) => setRoleModal(r)} />
         )}
@@ -233,13 +244,32 @@ export default function UsersLive() {
 
 // ---------- Users tab ----------
 
-function UsersTab({ roles, canRoles, tick, onEdit }: { roles: ApiRole[]; canRoles: boolean; tick: number; onEdit: (u: ApiUser) => void }) {
+function UsersTab({
+  roles,
+  canRoles,
+  tick,
+  status,
+  onStatus: setStatus,
+  onEdit,
+}: {
+  roles: ApiRole[];
+  canRoles: boolean;
+  tick: number;
+  status: string;
+  onStatus: (v: string) => void;
+  onEdit: (u: ApiUser) => void;
+}) {
   const { tx, language } = useT();
   const can = useCan();
   const [search, setSearch] = useState("");
   const [roleId, setRoleId] = useState("");
-  const [status, setStatus] = useState("");
   const [page, setPage] = useState(1);
+  // A stat card can change the status from outside: start from page 1 again.
+  const [seenStatus, setSeenStatus] = useState(status);
+  if (seenStatus !== status) {
+    setSeenStatus(status);
+    setPage(1);
+  }
   const q = useDebounced(search);
 
   const users = useApiPage(
@@ -309,6 +339,7 @@ function UsersTab({ roles, canRoles, tick, onEdit }: { roles: ApiRole[]; canRole
           <Refreshing on={users.fetching} />
           <DataTable
             title={tx({ en: "Users", ar: "المستخدمون" })}
+            searchable={false}
             headers={[
               tx({ en: "Name", ar: "الاسم" }),
               tx({ en: "Phone", ar: "الجوال" }),

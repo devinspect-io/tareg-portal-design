@@ -7,7 +7,7 @@ import { useMemo, useState } from "react";
 import CustomSelect from "@/components/dashboard/CustomSelect";
 import DatePicker from "@/components/dashboard/DatePicker";
 import DataTable, { Badge } from "@/components/dashboard/DataTable";
-import { Block, Page, Status } from "@/components/dashboard/ModulePage";
+import { Block, Page, Status, toggleCard } from "@/components/dashboard/ModulePage";
 import { EditButton, Field, FilterBar, NumberInput, RecordModal, TextInput, Toast } from "@/components/dashboard/RecordTools";
 import { FormError, LiveState, Pager, Refreshing, useDebounced } from "@/components/dashboard/live/LiveKit";
 import { api } from "@/lib/api/client";
@@ -423,14 +423,22 @@ export default function VehiclesLive() {
         primaryAction={canManage ? { en: "Add vehicle", ar: "إضافة مركبة" } : undefined}
         onPrimaryAction={openCreate}
         stats={[
-          { label: { en: "Total vehicles", ar: "إجمالي المركبات" }, value: n(stats.data?.total) },
-          { label: { en: "Active", ar: "نشطة" }, value: n(stats.data?.active), tone: "good" },
+          {
+            label: { en: "Total vehicles", ar: "إجمالي المركبات" },
+            value: n(stats.data?.total),
+            onClick: () => {
+              setStatus("");
+              setAssigned("");
+              setPage(1);
+            },
+          },
+          { label: { en: "Active", ar: "نشطة" }, value: n(stats.data?.active), tone: "good", ...toggleCard(status, "active", withReset(setStatus)) },
           {
             label: { en: "Maintenance / broken down", ar: "صيانة / معطلة" },
             value: stats.data ? String(stats.data.maintenance + stats.data.broken) : "-",
             tone: "warn",
           },
-          { label: { en: "Unassigned", ar: "بدون سائق" }, value: n(stats.data?.unassigned), tone: "info" },
+          { label: { en: "Unassigned", ar: "بدون سائق" }, value: n(stats.data?.unassigned), tone: "info", ...toggleCard(assigned, "false", withReset(setAssigned)) },
         ]}
       >
         <Block>
@@ -478,6 +486,7 @@ export default function VehiclesLive() {
             <Refreshing on={list.fetching} />
             <DataTable
               title={tx({ en: "Vehicle register", ar: "سجل المركبات" })}
+              searchable={false}
               empty={tx({ en: "No vehicles match these filters.", ar: "لا توجد مركبات مطابقة." })}
               headers={[
                 tx({ en: "Plate", ar: "اللوحة" }),

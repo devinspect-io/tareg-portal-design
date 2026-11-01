@@ -8,7 +8,7 @@ import { useCallback, useEffect, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { Badge } from "@/components/dashboard/DataTable";
 import DataTable from "@/components/dashboard/DataTable";
-import { Block, Page, Status } from "@/components/dashboard/ModulePage";
+import { Block, Page, Status, toggleCard } from "@/components/dashboard/ModulePage";
 import { FilterBar, Field, TextArea, Toast } from "@/components/dashboard/RecordTools";
 import { FormError, LiveState, Pager, Refreshing, useDebounced } from "@/components/dashboard/live/LiveKit";
 import { api } from "@/lib/api/client";
@@ -476,9 +476,9 @@ export default function MileageLive() {
       moduleKey="mileage"
       subtitle={{ en: "Kilometer readings submitted by drivers from the mobile app, with photo evidence.", ar: "قراءات العداد المرسلة من السائقين عبر تطبيق الجوال مع صور الإثبات." }}
       stats={[
-        { label: { en: "In review", ar: "قيد المراجعة" }, value: num(c?.inReview), tone: "warn" },
-        { label: { en: "Approved", ar: "معتمدة" }, value: num(c?.approved), tone: "good" },
-        { label: { en: "Rejected", ar: "مرفوضة" }, value: num(c?.rejected), tone: "bad" },
+        { label: { en: "In review", ar: "قيد المراجعة" }, value: num(c?.inReview), tone: "warn", ...toggleCard(status, "inReview", filter(setStatus)) },
+        { label: { en: "Approved", ar: "معتمدة" }, value: num(c?.approved), tone: "good", ...toggleCard(status, "approved", filter(setStatus)) },
+        { label: { en: "Rejected", ar: "مرفوضة" }, value: num(c?.rejected), tone: "bad", ...toggleCard(status, "rejected", filter(setStatus)) },
       ]}
     >
       <Block>
@@ -514,6 +514,7 @@ export default function MileageLive() {
           <Refreshing on={fetching} />
           <DataTable
             title={tx({ en: "Driver submissions", ar: "قراءات السائقين" })}
+            searchable={false}
             empty={status === "inReview" && !vehicleId && !driverId && !from && !to && !q ? tx({ en: "Nothing waiting for review. All caught up.", ar: "لا توجد قراءات بانتظار المراجعة." }) : tx({ en: "No readings match these filters.", ar: "لا توجد قراءات مطابقة." })}
             headers={[
               tx({ en: "Ref.", ar: "المرجع" }),

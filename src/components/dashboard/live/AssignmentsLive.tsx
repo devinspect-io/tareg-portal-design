@@ -6,7 +6,7 @@ import { useState } from "react";
 import CustomSelect from "@/components/dashboard/CustomSelect";
 import DatePicker from "@/components/dashboard/DatePicker";
 import DataTable, { Badge } from "@/components/dashboard/DataTable";
-import { Block, Page } from "@/components/dashboard/ModulePage";
+import { Block, Page, toggleCard } from "@/components/dashboard/ModulePage";
 import { FilterBar, Field, NumberInput, RecordModal, Toast } from "@/components/dashboard/RecordTools";
 import { FormError, LiveState, Pager, Refreshing, useDebounced } from "@/components/dashboard/live/LiveKit";
 import { ApiError, api } from "@/lib/api/client";
@@ -101,8 +101,8 @@ export default function AssignmentsLive() {
       primaryAction={canManage ? { en: "Assign vehicle", ar: "إسناد مركبة" } : undefined}
       onPrimaryAction={() => setAssignOpen(true)}
       stats={[
-        { label: { en: "Current assignments", ar: "الإسنادات الحالية" }, value: dash(activeCount.total, !!activeCount.data) },
-        { label: { en: "Ended assignments", ar: "إسنادات منتهية" }, value: dash(endedCount.total, !!endedCount.data) },
+        { label: { en: "Current assignments", ar: "الإسنادات الحالية" }, value: dash(activeCount.total, !!activeCount.data), ...toggleCard(current, "true", setFilter(setCurrent)) },
+        { label: { en: "Ended assignments", ar: "إسنادات منتهية" }, value: dash(endedCount.total, !!endedCount.data), ...toggleCard(current, "false", setFilter(setCurrent)) },
         { label: { en: "Vehicles without a driver", ar: "مركبات بدون سائق" }, value: dash(freeVehicles.total, !!freeVehicles.data), tone: "warn" },
         { label: { en: "Active drivers without a vehicle", ar: "سائقون نشطون بدون مركبة" }, value: dash(freeDrivers.length, !!activeDrivers.data) },
       ]}
@@ -152,6 +152,7 @@ export default function AssignmentsLive() {
           <Refreshing on={list.fetching} />
           <DataTable
             title={tx({ en: "Assignment history", ar: "سجل الإسناد" })}
+            searchable={false}
             headers={headers}
             empty={tx({ en: "No assignments match these filters.", ar: "لا توجد إسنادات مطابقة." })}
             rows={list.items.map((a) => ({
