@@ -7,7 +7,7 @@ import { useState } from "react";
 import { motion } from "framer-motion";
 import { Badge, type SearchText } from "@/components/dashboard/DataTable";
 import { useT, type Bi } from "@/lib/translations";
-import { MODULE_LABELS, STATUS, expiryStatus, fmtDate, type ModuleKey, type StatusCode, type Tone } from "@/lib/fleet-data";
+import { MODULE_LABELS, STATUS, expiryStatus, fmtDate, type ApprovalStep, type ModuleKey, type StatusCode, type Tone } from "@/lib/fleet-data";
 
 // ---------- Animation ----------
 
@@ -40,6 +40,42 @@ ExpiryCell.searchText = (({ iso }, { tx, language }) => {
   const code = expiryStatus(iso);
   return `${fmtDate(iso, language)} ${code !== "valid" ? tx(STATUS[code].label) : ""}`;
 }) satisfies SearchText<{ iso: string }>;
+
+// ---------- Approval chain (mock and live Approvals) ----------
+
+const STEP_STYLE: Record<ApprovalStep["state"], string> = {
+  done: "bg-green-500 text-white",
+  current: "bg-accent-500 text-white ring-4 ring-accent-500/20",
+  waiting: "bg-neutral-200 text-neutral-500 dark:bg-neutral-700 dark:text-neutral-400",
+  rejected: "bg-red-500 text-white",
+  skipped: "border border-dashed border-neutral-300 text-neutral-400 dark:border-neutral-600",
+};
+
+/** Driver → Assistant → Fleet Manager, with each step's state. */
+export function ApprovalChain({ steps }: { steps: ApprovalStep[] }) {
+  const { tx } = useT();
+  return (
+    <ol className="flex flex-wrap items-center gap-2">
+      {steps.map((s, i) => (
+        <li key={i} className="flex items-center gap-2">
+          <span className="flex items-center gap-1.5" title={s.state === "skipped" ? tx({ en: "Skipped: approved by the Fleet Manager", ar: "تم تجاوزه: اعتمده مدير الأسطول" }) : undefined}>
+            <span className={`flex h-6 w-6 items-center justify-center rounded-full text-[11px] font-bold ${STEP_STYLE[s.state]}`}>
+              {s.state === "done" ? "✓" : s.state === "rejected" ? "✕" : s.state === "skipped" ? "-" : i + 1}
+            </span>
+            <span
+              className={`text-xs font-medium ${
+                s.state === "current" ? "text-accent-700 dark:text-accent-400" : s.state === "skipped" ? "text-neutral-400 line-through" : "text-neutral-600 dark:text-neutral-300"
+              }`}
+            >
+              {tx(s.role)}
+            </span>
+          </span>
+          {i < steps.length - 1 && <span className="h-px w-6 bg-neutral-300 dark:bg-neutral-700" aria-hidden="true" />}
+        </li>
+      ))}
+    </ol>
+  );
+}
 
 export type Stat = {
   label: Bi;

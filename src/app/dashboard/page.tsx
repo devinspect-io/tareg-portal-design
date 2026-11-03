@@ -19,28 +19,20 @@ import { useT, type Bi } from "@/lib/translations";
 import { restoreSession, signOut, useCan, useSession } from "@/lib/api/session";
 import { api } from "@/lib/api/client";
 import { useApi } from "@/lib/api/hooks";
-import type { ApiMileage } from "@/lib/api/types";
+import type { ApiApproval, ApiComplianceItem, ApiMileage, ApiServiceDue } from "@/lib/api/types";
+import { APPROVAL_TYPE_LABEL, DOCUMENT_LABEL } from "@/components/dashboard/live/LiveKit";
 import type { Language } from "@/lib/useLanguage";
 import {
-  APPROVALS,
-  BREAKDOWNS,
   EXPENSES,
   EXPENSE_CATEGORIES,
   MAINTENANCE_COST,
   MODULE_LABELS,
   MONTHLY_KM,
-  SCHEDULED_MAINTENANCE,
   STATUS,
-  VEHICLES,
-  complianceItems,
-  driverById,
-  dueStatus,
-  expiryStatus,
   fmtDate,
   fmtKm,
   fmtSAR,
   lastMonths,
-  vehicleById,
   type ExpenseCategory,
   type ModuleKey,
   type StatusCode,
@@ -53,14 +45,12 @@ const SHOW_MAINTENANCE_COST_CHART = false;
 
 // ---------- Chart configs ----------
 
-function buildChartOptions(dark: boolean, lang: Language, tx: (b: Bi) => string) {
+function buildChartOptions(dark: boolean, lang: Language, tx: (b: Bi) => string, statusCounts: Map<StatusCode, number>) {
   const months = lastMonths(6, lang);
 
   const byCategory = new Map<ExpenseCategory, number>();
   for (const e of EXPENSES) byCategory.set(e.category, (byCategory.get(e.category) ?? 0) + e.amount);
 
-  const statusCounts = new Map<StatusCode, number>();
-  for (const v of VEHICLES) statusCounts.set(v.status, (statusCounts.get(v.status) ?? 0) + 1);
   const STATUS_COLOR: Partial<Record<StatusCode, string>> = {
     active: "#16a34a",
     inMaintenance: ACCENT_ORANGE,
@@ -167,26 +157,83 @@ function ViewAll({ onClick }: { onClick: () => void }) {
 /** Pageless counts: ask for one row and read the total. */
 const count = (path: string, query: Record<string, string> = {}) => api.page(path, { ...query, pageSize: 1 }).then((p) => p.total);
 
+/** First rows of a list. */
+const firstRows = <T,>(path: string, query: Record<string, string | number> = {}) =>
+  api.page<T>(path, { ...query, page: 1 }).then((p) => p.items);
+
 /**
- * The home figures the backend can already answer. Each part is fetched only
- * when the role can see that module; the rest of the dashboard is still mock.
+ * The home figures the backend can answer. Each part is fetched only when the
+ * role can see that module. List filters take one status each, so "pending"
+ * and "open" figures add two counts. Fleet expenses, the expenses chart and
+ * the km chart have no API yet and stay mock (tagged on screen).
  */
 function useLiveHome(enabled: boolean) {
   const can = useCan();
   const vehicles = enabled && can("vehicles:view");
   const drivers = enabled && can("drivers:view");
   const mileage = enabled && can("mileage:view");
+  const breakdowns = enabled && can("breakdowns:view");
+  const approvals = enabled && can("approvals:view");
+  const compliance = enabled && can("compliance:view");
+  const maintenance = enabled && can("maintenance:view");
   return useApi(async () => {
-    const [total, maint, broken, active, inReview, recent] = await Promise.all([
-      vehicles ? count("/vehicles") : null,
-      vehicles ? count("/vehicles", { status: "inMaintenance" }) : null,
-      vehicles ? count("/vehicles", { status: "brokenDown" }) : null,
-      drivers ? count("/drivers", { status: "active" }) : null,
-      mileage ? count("/mileage", { status: "inReview" }) : null,
-      mileage ? api.page<ApiMileage>("/mileage", { pageSize: 5, sort: "-date" }).then((p) => p.items) : null,
+    const none = Promise.resolve(null);
+    const [
+      [total, active, maint, broken, inactive],
+      drv,
+      [open, inProgress],
+      [atAssistant, atManager, waitAssistant, waitManager],
+      [expiring, expired, expiries],
+      schedule,
+      recent,
+    ] = await Promise.all([
+      vehicles
+        ? Promise.all([count("/vehicles"), count("/vehicles", { status: "active" }), count("/vehicles", { status: "inMaintenance" }), count("/vehicles", { status: "brokenDown" }), count("/vehicles", { status: "inactive" })])
+        : [null, null, null, null, null],
+      drivers ? count("/drivers", { status: "active" }) : none,
+      breakdowns ? Promise.all([count("/breakdowns", { status: "open" }), count("/breakdowns", { status: "inProgress" })]) : [null, null],
+      approvals
+        ? Promise.all([
+            count("/approvals", { status: "pendingAssistant" }),
+            count("/approvals", { status: "pendingFleetManager" }),
+            firstRows<ApiApproval>("/approvals", { status: "pendingAssistant", pageSize: 6, sort: "createdAt" }),
+            firstRows<ApiApproval>("/approvals", { status: "pendingFleetManager", pageSize: 6, sort: "createdAt" }),
+          ])
+        : [null, null, null, null],
+      compliance
+        ? Promise.all([
+            count("/compliance", { status: "expiringSoon" }),
+            count("/compliance", { status: "expired" }),
+            // Expired and expiring within 30 days, soonest expiry first.
+            firstRows<ApiComplianceItem>("/compliance", { withinDays: 30, pageSize: 6 }),
+          ])
+        : [null, null, null],
+      maintenance ? api.get<ApiServiceDue[]>("/maintenance/schedule") : none,
+      mileage ? firstRows<ApiMileage>("/mileage", { pageSize: 5, sort: "-date" }) : none,
     ]);
-    return { total, offRoad: maint === null || broken === null ? null : maint + broken, active, inReview, recent };
-  }, `${vehicles}${drivers}${mileage}`);
+    const sum = (a: number | null, b: number | null) => (a === null || b === null ? null : a + b);
+    const statusCounts = new Map<StatusCode, number>();
+    if (active !== null) statusCounts.set("active", active);
+    if (maint !== null) statusCounts.set("inMaintenance", maint);
+    if (broken !== null) statusCounts.set("brokenDown", broken);
+    if (inactive !== null) statusCounts.set("inactive", inactive);
+    return {
+      total,
+      active: drv,
+      offRoad: sum(maint, broken),
+      openBreakdowns: sum(open, inProgress),
+      pendingApprovals: sum(atAssistant, atManager),
+      // Oldest first: the request waiting longest leads.
+      pending: waitAssistant && waitManager ? [...waitAssistant, ...waitManager].sort((a, b) => a.createdAt.localeCompare(b.createdAt)).slice(0, 6) : [],
+      expiring,
+      expired,
+      expiries: expiries ?? [],
+      // The server orders overdue, then due soon, then scheduled.
+      upcoming: (schedule ?? []).filter((d) => d.status !== "scheduled").slice(0, 5),
+      statusCounts,
+      recent,
+    };
+  }, `${vehicles}${drivers}${mileage}${breakdowns}${approvals}${compliance}${maintenance}`);
 }
 
 // ---------- Page ----------
@@ -203,7 +250,6 @@ export default function DashboardPage() {
   const [filterFrom, setFilterFrom] = useState("");
   const [filterTo, setFilterTo] = useState("");
 
-  const charts = useMemo(() => buildChartOptions(theme === "dark", language, (b) => b[language]), [theme, language]);
 
   useEffect(() => {
     const timer = setTimeout(() => setBooting(false), 1100);
@@ -220,6 +266,11 @@ export default function DashboardPage() {
   }, [session.status, router]);
   const ready = !booting && session.status === "signedIn";
   const live = useLiveHome(session.status === "signedIn").data;
+  const statusCounts = live?.statusCounts;
+  const charts = useMemo(
+    () => buildChartOptions(theme === "dark", language, (b) => b[language], statusCounts ?? new Map()),
+    [theme, language, statusCounts],
+  );
 
   function openModule(key: ModuleKey) {
     if (key === "dashboard") {
@@ -235,20 +286,11 @@ export default function DashboardPage() {
   }
 
   // ---------- Derived dashboard figures ----------
-  const compliance = complianceItems();
-  const expired = compliance.filter((c) => expiryStatus(c.expiry) === "expired");
-  const expiring = compliance.filter((c) => expiryStatus(c.expiry) === "expiringSoon");
-  const pendingApprovals = APPROVALS.filter((a) => a.status === "pending");
-  const openBreakdowns = BREAKDOWNS.filter((b) => b.status !== "closed");
   const spend = EXPENSES.reduce((s, e) => s + e.amount, 0);
   const sarSuffix = language === "ar" ? " ر.س" : "";
   const sarPrefix = language === "ar" ? "" : "SAR ";
 
-  const driverName = (id: string) => {
-    const d = driverById(id);
-    return d ? tx(d.name) : "-";
-  };
-  const plate = (id: string) => vehicleById(id)?.plate ?? "-";
+  const plate = (p: string | null | undefined) => <span dir="ltr">{p ?? "-"}</span>;
   const status = (code: StatusCode) => <Badge label={tx(STATUS[code].label)} tone={STATUS[code].tone} />;
 
   return (
@@ -313,11 +355,11 @@ export default function DashboardPage() {
                   <StatCard value={live?.total ?? 0} sub={tx({ en: "Total vehicles", ar: "إجمالي المركبات" })} onClick={() => openModule("vehicles")} />
                   <StatCard value={live?.active ?? 0} sub={tx({ en: "Active drivers", ar: "السائقون النشطون" })} onClick={() => openModule("drivers")} />
                   <StatCard value={live?.offRoad ?? 0} sub={tx({ en: "Vehicles off the road", ar: "مركبات خارج الخدمة" })} tone="warn" onClick={() => openModule("maintenance")} />
-                  <StatCard value={openBreakdowns.length} sub={tx({ en: "Open breakdowns", ar: "أعطال مفتوحة" })} tone="bad" onClick={() => openModule("breakdowns")} />
-                  <StatCard value={pendingApprovals.length} sub={tx({ en: "Pending approvals", ar: "موافقات معلقة" })} tone="warn" onClick={() => openModule("approvals")} />
-                  <StatCard value={expiring.length} sub={tx({ en: "Expiring in 30 days", ar: "تنتهي خلال 30 يومًا" })} tone="warn" onClick={() => openModule("compliance")} />
-                  <StatCard value={expired.length} sub={tx({ en: "Expired documents", ar: "وثائق منتهية" })} tone="bad" onClick={() => openModule("compliance")} />
-                  <StatCard value={spend} prefix={sarPrefix} suffix={sarSuffix} sub={tx({ en: "Fleet expenses (30 days)", ar: "مصروفات الأسطول (30 يومًا)" })} onClick={() => openModule("expenses")} />
+                  <StatCard value={live?.openBreakdowns ?? 0} sub={tx({ en: "Open breakdowns", ar: "أعطال مفتوحة" })} tone="bad" onClick={() => openModule("breakdowns")} />
+                  <StatCard value={live?.pendingApprovals ?? 0} sub={tx({ en: "Pending approvals", ar: "موافقات معلقة" })} tone="warn" onClick={() => openModule("approvals")} />
+                  <StatCard value={live?.expiring ?? 0} sub={tx({ en: "Expiring in 30 days", ar: "تنتهي خلال 30 يومًا" })} tone="warn" onClick={() => openModule("compliance")} />
+                  <StatCard value={live?.expired ?? 0} sub={tx({ en: "Expired documents", ar: "وثائق منتهية" })} tone="bad" onClick={() => openModule("compliance")} />
+                  <StatCard mock value={spend} prefix={sarPrefix} suffix={sarSuffix} sub={tx({ en: "Fleet expenses (30 days)", ar: "مصروفات الأسطول (30 يومًا)" })} onClick={() => openModule("expenses")} />
                 </motion.div>
 
                 {/* Quick Actions */}
@@ -346,9 +388,15 @@ export default function DashboardPage() {
                     title={tx({ en: "Upcoming & overdue expiries", ar: "الوثائق المنتهية والقريبة من الانتهاء" })}
                     action={<ViewAll onClick={() => openModule("compliance")} />}
                     headers={[tx({ en: "Document", ar: "الوثيقة" }), tx({ en: "Holder", ar: "صاحب الوثيقة" }), tx({ en: "Expiry", ar: "الانتهاء" }), tx({ en: "Status", ar: "الحالة" })]}
-                    rows={[...expired, ...expiring].slice(0, 6).map((c, i) => ({
-                      key: `exp-${i}`,
-                      cells: [tx(c.document), tx(c.subject), fmtDate(c.expiry, language), status(expiryStatus(c.expiry))],
+                    empty={tx({ en: "Nothing expired or expiring in the next 30 days.", ar: "لا توجد وثائق منتهية أو تنتهي خلال 30 يومًا." })}
+                    rows={(live?.expiries ?? []).map((c) => ({
+                      key: c.id,
+                      cells: [
+                        tx(DOCUMENT_LABEL[c.document]),
+                        c.subject.name ? tx(c.subject.name) : plate(c.subject.plateNumber),
+                        fmtDate(c.expiry, language),
+                        status(c.status),
+                      ],
                     }))}
                   />
                   <DataTable
@@ -356,24 +404,35 @@ export default function DashboardPage() {
                     title={tx({ en: "Pending approvals", ar: "الموافقات المعلقة" })}
                     action={<ViewAll onClick={() => openModule("approvals")} />}
                     headers={[tx({ en: "Request", ar: "الطلب" }), tx({ en: "Driver", ar: "السائق" }), tx({ en: "Amount", ar: "المبلغ" }), tx({ en: "Waiting on", ar: "بانتظار" })]}
-                    rows={pendingApprovals.map((a) => {
-                      const step = a.steps.find((s) => s.state === "current");
-                      return {
-                        key: a.id,
-                        cells: [tx(a.type), driverName(a.driverId), fmtSAR(a.amount, language), step ? <Badge key="w" label={tx(step.role)} tone="warn" /> : "-"],
-                      };
-                    })}
+                    empty={tx({ en: "No requests waiting for a decision.", ar: "لا توجد طلبات بانتظار قرار." })}
+                    rows={(live?.pending ?? []).map((a) => ({
+                      key: a.id,
+                      cells: [
+                        tx(APPROVAL_TYPE_LABEL[a.type]),
+                        a.driver ? tx(a.driver.name) : "-",
+                        fmtSAR(a.amount, language),
+                        a.waitingOn ? (
+                          <Badge
+                            key="w"
+                            label={tx(a.waitingOn === "assistant" ? { en: "Assistant", ar: "المساعد" } : { en: "Fleet Manager", ar: "مدير الأسطول" })}
+                            tone="warn"
+                          />
+                        ) : (
+                          "-"
+                        ),
+                      ],
+                    }))}
                   />
                 </motion.div>
 
                 {/* Charts */}
                 {/* Three charts sit in one row; four fall back to a 2x2 grid. */}
                 <motion.div variants={section} className={`grid grid-cols-1 gap-4 ${SHOW_MAINTENANCE_COST_CHART ? "lg:grid-cols-2" : "lg:grid-cols-3"}`}>
-                  <ChartCard title={tx({ en: "Kilometers driven (6 months)", ar: "الكيلومترات المقطوعة (6 أشهر)" })} options={charts.mileage} />
-                  <ChartCard title={tx({ en: "Expenses by category", ar: "المصروفات حسب الفئة" })} options={charts.expenses} />
+                  <ChartCard mock title={tx({ en: "Kilometers driven (6 months)", ar: "الكيلومترات المقطوعة (6 أشهر)" })} options={charts.mileage} />
+                  <ChartCard mock title={tx({ en: "Expenses by category", ar: "المصروفات حسب الفئة" })} options={charts.expenses} />
                   <ChartCard title={tx({ en: "Fleet status", ar: "حالة الأسطول" })} options={charts.status} />
                   {SHOW_MAINTENANCE_COST_CHART && (
-                    <ChartCard title={tx({ en: "Maintenance cost: scheduled vs emergency", ar: "تكلفة الصيانة: مجدولة مقابل طارئة" })} options={charts.maintenance} />
+                    <ChartCard mock title={tx({ en: "Maintenance cost: scheduled vs emergency", ar: "تكلفة الصيانة: مجدولة مقابل طارئة" })} options={charts.maintenance} />
                   )}
                 </motion.div>
 
@@ -384,9 +443,15 @@ export default function DashboardPage() {
                     title={tx({ en: "Upcoming maintenance", ar: "الصيانة القادمة" })}
                     action={<ViewAll onClick={() => openModule("maintenance")} />}
                     headers={[tx({ en: "Vehicle", ar: "المركبة" }), tx({ en: "Service", ar: "الخدمة" }), tx({ en: "Due", ar: "الاستحقاق" }), tx({ en: "Status", ar: "الحالة" })]}
-                    rows={SCHEDULED_MAINTENANCE.slice(0, 5).map((m, i) => ({
-                      key: `m-${i}`,
-                      cells: [plate(m.vehicleId), tx(m.task), fmtDate(m.dueDate, language), status(dueStatus(m.dueDate))],
+                    empty={tx({ en: "No service overdue or due soon.", ar: "لا توجد صيانة متأخرة أو قريبة." })}
+                    rows={(live?.upcoming ?? []).map((m) => ({
+                      key: m.vehicleId,
+                      cells: [
+                        plate(m.vehicle?.plateNumber),
+                        m.task,
+                        m.dueDate ? fmtDate(m.dueDate, language) : m.dueKm !== null ? fmtKm(m.dueKm, language) : "-",
+                        status(m.status),
+                      ],
                     }))}
                   />
                   <DataTable
@@ -397,7 +462,7 @@ export default function DashboardPage() {
                     empty={tx({ en: "No readings yet.", ar: "لا توجد قراءات بعد." })}
                     rows={(live?.recent ?? []).map((m) => ({
                       key: m.id,
-                      cells: [m.driver ? tx(m.driver.name) : "-", <span key="p" dir="ltr">{m.vehicle?.plateNumber ?? "-"}</span>, fmtKm(m.reading, language), status(m.status)],
+                      cells: [m.driver ? tx(m.driver.name) : "-", plate(m.vehicle?.plateNumber), fmtKm(m.reading, language), status(m.status)],
                     }))}
                   />
                 </motion.div>

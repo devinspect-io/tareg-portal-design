@@ -82,6 +82,8 @@ export const STATUS = {
   brokenDown: { tone: "bad", label: { en: "Broken down", ar: "معطلة" } },
   onLeave: { tone: "neutral", label: { en: "On leave", ar: "في إجازة" } },
   pending: { tone: "warn", label: { en: "Pending", ar: "قيد الانتظار" } },
+  pendingAssistant: { tone: "warn", label: { en: "With the Assistant", ar: "لدى المساعد" } },
+  pendingFleetManager: { tone: "warn", label: { en: "With the Fleet Manager", ar: "لدى مدير الأسطول" } },
   approved: { tone: "good", label: { en: "Approved", ar: "معتمد" } },
   rejected: { tone: "bad", label: { en: "Rejected", ar: "مرفوض" } },
   inReview: { tone: "info", label: { en: "In review", ar: "قيد المراجعة" } },
@@ -146,6 +148,8 @@ export type NavItem = {
   label: Bi;
   /** Kept in config (and its view still routable) but left out of the sidebar. */
   hidden?: boolean;
+  /** Still runs on mock data (no API yet): the sidebar tags it until it goes live. */
+  mock?: boolean;
 };
 
 export type NavSection = { title: Bi; items: NavItem[] };
@@ -155,7 +159,7 @@ export const NAV_SECTIONS: NavSection[] = [
     title: { en: "Overview", ar: "نظرة عامة" },
     items: [
       { key: "dashboard", icon: "home", label: { en: "Dashboard", ar: "لوحة التحكم" } },
-      { key: "notifications", icon: "bell", label: { en: "Notifications", ar: "الإشعارات" } },
+      { key: "notifications", icon: "bell", label: { en: "Notifications", ar: "الإشعارات" }, mock: true },
       { key: "ai-reporting", icon: "sparkles", label: { en: "AI Reporting", ar: "تقارير الذكاء الاصطناعي" }, hidden: true },
     ],
   },
@@ -182,22 +186,22 @@ export const NAV_SECTIONS: NavSection[] = [
     title: { en: "Compliance & Finance", ar: "الامتثال والمالية" },
     items: [
       { key: "compliance", icon: "shield", label: { en: "Compliance & Expiries", ar: "الامتثال والصلاحيات" } },
-      { key: "fuel", icon: "fuel", label: { en: "Fuel Benefits", ar: "مخصصات الوقود" } },
-      { key: "expenses", icon: "receipt", label: { en: "Expense Invoices", ar: "فواتير المصروفات" } },
+      { key: "fuel", icon: "fuel", label: { en: "Fuel Benefits", ar: "مخصصات الوقود" }, mock: true },
+      { key: "expenses", icon: "receipt", label: { en: "Expense Invoices", ar: "فواتير المصروفات" }, mock: true },
     ],
   },
   {
     title: { en: "Records", ar: "السجلات" },
     items: [
-      { key: "history", icon: "history", label: { en: "Vehicle & Driver History", ar: "سجل المركبات والسائقين" } },
-      { key: "reports", icon: "chart", label: { en: "Reports", ar: "التقارير" } },
+      { key: "history", icon: "history", label: { en: "Vehicle & Driver History", ar: "سجل المركبات والسائقين" }, mock: true },
+      { key: "reports", icon: "chart", label: { en: "Reports", ar: "التقارير" }, mock: true },
     ],
   },
   {
     title: { en: "Administration", ar: "الإدارة" },
     items: [
       { key: "users", icon: "users", label: { en: "Users & Roles", ar: "المستخدمون والصلاحيات" } },
-      { key: "settings", icon: "gears", label: { en: "Settings", ar: "الإعدادات" } },
+      { key: "settings", icon: "gears", label: { en: "Settings", ar: "الإعدادات" }, mock: true },
     ],
   },
 ];
@@ -394,7 +398,8 @@ export const BREAKDOWNS: Breakdown[] = [
 
 // ---------- Approvals ----------
 
-export type ApprovalStep = { role: Bi; state: "done" | "current" | "waiting" | "rejected" };
+/** "skipped": the Fleet Manager approved before the Assistant acted. */
+export type ApprovalStep = { role: Bi; state: "done" | "current" | "waiting" | "rejected" | "skipped" };
 
 export type Approval = {
   id: string;

@@ -5,10 +5,13 @@ import type { Options } from "highcharts";
 import Highcharts from "highcharts";
 import HighchartsReact from "highcharts-react-official";
 import Loader from "@/components/Loader";
+import MockTag from "@/components/dashboard/MockTag";
 
 type ChartCardProps = {
   title: string;
   options: Options;
+  /** The chart still draws mock data: shows a Mock tag. */
+  mock?: boolean;
 };
 
 const emptySubscribe = () => () => {};
@@ -17,7 +20,7 @@ const emptySubscribe = () => () => {};
  * Titled dashboard card wrapping a Highcharts chart. The chart renders only
  * on the client (no SSR/window issues); a small gear loader fills in before.
  */
-export default function ChartCard({ title, options }: ChartCardProps) {
+export default function ChartCard({ title, options, mock = false }: ChartCardProps) {
   // true on the client after hydration, false during SSR — no effect needed
   const mounted = useSyncExternalStore(
     emptySubscribe,
@@ -27,7 +30,10 @@ export default function ChartCard({ title, options }: ChartCardProps) {
 
   return (
     <div className="rounded-xl border border-neutral-100 bg-white p-5 shadow-sm dark:border-neutral-800 dark:bg-neutral-900">
-      <h3 className="mb-3 text-sm font-semibold text-foreground">{title}</h3>
+      <h3 className="mb-3 flex items-center gap-2 text-sm font-semibold text-foreground">
+        {title}
+        {mock && <MockTag />}
+      </h3>
       <div className="h-64">
         {mounted ? (
           <HighchartsReact

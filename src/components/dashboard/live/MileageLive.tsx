@@ -4,13 +4,13 @@
 // the mobile app. Live data from GET /mileage; approve / reject need the
 // "mileage:review" permission.
 
-import { useCallback, useEffect, useState } from "react";
-import { AnimatePresence, motion } from "framer-motion";
+import { useCallback, useState } from "react";
+import { AnimatePresence } from "framer-motion";
 import { Badge } from "@/components/dashboard/DataTable";
 import DataTable from "@/components/dashboard/DataTable";
 import { Block, Page, Status, toggleCard } from "@/components/dashboard/ModulePage";
 import { FilterBar, Field, TextArea, Toast } from "@/components/dashboard/RecordTools";
-import { FormError, LiveState, Pager, Refreshing, useDebounced } from "@/components/dashboard/live/LiveKit";
+import { Dialog, Fact, FormError, Lightbox, LiveState, Pager, Refreshing, ghostBtn, useDebounced } from "@/components/dashboard/live/LiveKit";
 import { api } from "@/lib/api/client";
 import { useApi, useApiPage } from "@/lib/api/hooks";
 import { useCan } from "@/lib/api/session";
@@ -90,103 +90,6 @@ function PhotoThumbs({ photos, onOpen }: { photos: string[]; onOpen: () => void 
     </button>
   );
 }
-
-const arrowBtn = "absolute top-1/2 -translate-y-1/2 rounded-full bg-black/50 p-2.5 text-white transition-colors hover:bg-black/70 disabled:opacity-30";
-
-/** Full-screen viewer with next / previous, keyboard arrows and Escape. */
-function Lightbox({ photos, start, onClose }: { photos: string[]; start: number; onClose: () => void }) {
-  const { tx } = useT();
-  const [i, setI] = useState(start);
-  const last = photos.length - 1;
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
-      // Arrows follow the reading direction of the page.
-      const rtl = document.documentElement.dir === "rtl";
-      if (e.key === "ArrowRight") setI((v) => Math.max(0, Math.min(last, v + (rtl ? -1 : 1))));
-      if (e.key === "ArrowLeft") setI((v) => Math.max(0, Math.min(last, v + (rtl ? 1 : -1))));
-    };
-    document.addEventListener("keydown", onKey);
-    return () => document.removeEventListener("keydown", onKey);
-  }, [last, onClose]);
-
-  return (
-    <motion.div
-      className="fixed inset-0 z-[60] flex items-center justify-center bg-black/90 p-4"
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      exit={{ opacity: 0 }}
-      onMouseDown={(e) => e.target === e.currentTarget && onClose()}
-    >
-      <button onClick={onClose} aria-label={tx({ en: "Close", ar: "إغلاق" })} className="absolute end-4 top-4 rounded-full bg-black/50 p-2.5 text-white hover:bg-black/70">
-        <svg width={18} height={18} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" aria-hidden="true">
-          <path d="M6 6l12 12M18 6L6 18" />
-        </svg>
-      </button>
-      <Photo key={i} src={photos[i]} contain className="max-h-[85vh] w-full max-w-5xl rounded-lg" />
-      {photos.length > 1 && (
-        <>
-          <button className={`${arrowBtn} start-3`} disabled={i === 0} onClick={() => setI(i - 1)} aria-label={tx({ en: "Previous photo", ar: "الصورة السابقة" })}>
-            <svg width={20} height={20} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round" className="rtl:rotate-180" aria-hidden="true">
-              <path d="M15 5l-7 7 7 7" />
-            </svg>
-          </button>
-          <button className={`${arrowBtn} end-3`} disabled={i === last} onClick={() => setI(i + 1)} aria-label={tx({ en: "Next photo", ar: "الصورة التالية" })}>
-            <svg width={20} height={20} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round" className="rtl:rotate-180" aria-hidden="true">
-              <path d="M9 5l7 7-7 7" />
-            </svg>
-          </button>
-          <span dir="ltr" className="absolute bottom-4 left-1/2 -translate-x-1/2 rounded-full bg-black/60 px-3 py-1 text-xs font-semibold text-white">
-            {i + 1} / {photos.length}
-          </span>
-        </>
-      )}
-    </motion.div>
-  );
-}
-
-/** Centered dialog shell used by the detail view and the review dialogs. */
-function Dialog({ title, onClose, wide = false, z = "z-50", children }: { title: string; onClose: () => void; wide?: boolean; z?: string; children: React.ReactNode }) {
-  const { tx } = useT();
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
-    document.addEventListener("keydown", onKey);
-    return () => document.removeEventListener("keydown", onKey);
-  }, [onClose]);
-  return (
-    <motion.div
-      className={`fixed inset-0 ${z} flex items-center justify-center bg-black/50 p-3 backdrop-blur-sm sm:p-6`}
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      exit={{ opacity: 0 }}
-      onMouseDown={(e) => e.target === e.currentTarget && onClose()}
-    >
-      <motion.div
-        role="dialog"
-        aria-modal="true"
-        aria-label={title}
-        initial={{ opacity: 0, y: 16, scale: 0.98 }}
-        animate={{ opacity: 1, y: 0, scale: 1 }}
-        exit={{ opacity: 0, y: 16, scale: 0.98 }}
-        transition={{ duration: 0.2, ease: "easeOut" }}
-        className={`flex max-h-full w-full flex-col overflow-hidden rounded-2xl bg-white shadow-2xl dark:bg-neutral-900 ${wide ? "max-w-3xl" : "max-w-md"}`}
-      >
-        <div className="flex items-center justify-between border-b border-neutral-100 px-5 py-4 dark:border-neutral-800">
-          <h2 className="text-lg font-bold text-foreground">{title}</h2>
-          <button type="button" onClick={onClose} aria-label={tx({ en: "Close", ar: "إغلاق" })} className="rounded-full p-2 text-neutral-500 transition-colors hover:bg-neutral-100 dark:hover:bg-neutral-800">
-            <svg width={18} height={18} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" aria-hidden="true">
-              <path d="M6 6l12 12M18 6L6 18" />
-            </svg>
-          </button>
-        </div>
-        {children}
-      </motion.div>
-    </motion.div>
-  );
-}
-
-const ghostBtn =
-  "rounded-lg border border-neutral-200 bg-white px-4 py-2 text-sm font-medium text-neutral-600 transition-colors hover:bg-neutral-100 disabled:opacity-50 dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-300 dark:hover:bg-neutral-700";
 
 /** Approve confirmation / reject reason form. */
 function ReviewDialog({ action, onClose, onDone }: { action: Action; onClose: () => void; onDone: (kind: Action["kind"], stale: boolean) => void }) {
@@ -295,15 +198,6 @@ function ReviewButtons({ m, onAct, size = "sm" }: { m: ApiMileage; onAct: (a: Ac
         {tx({ en: "Reject", ar: "رفض" })}
       </button>
     </span>
-  );
-}
-
-function Fact({ label, children }: { label: string; children: React.ReactNode }) {
-  return (
-    <div className="rounded-lg bg-neutral-50 px-3 py-2.5 dark:bg-neutral-800/60">
-      <p className="text-xs text-neutral-500 dark:text-neutral-400">{label}</p>
-      <div className="mt-0.5 text-sm font-semibold text-foreground">{children}</div>
-    </div>
   );
 }
 
@@ -570,7 +464,15 @@ export default function MileageLive() {
       <AnimatePresence>
         {detail && <Detail key="detail" m={detail} canReview={canReview} onClose={closeDetail} onAct={setAction} onZoom={(i) => setLightbox({ photos: detail.photos, start: i })} />}
         {action && <ReviewDialog key={`${action.kind}-${action.m.id}`} action={action} onClose={() => setAction(null)} onDone={done} />}
-        {lightbox && <Lightbox key="lb" photos={lightbox.photos} start={lightbox.start} onClose={closeLightbox} />}
+        {lightbox && (
+          <Lightbox
+            key="lb"
+            count={lightbox.photos.length}
+            start={lightbox.start}
+            onClose={closeLightbox}
+            render={(i) => <Photo key={i} src={lightbox.photos[i]} contain className="max-h-[85vh] w-full max-w-5xl rounded-lg" />}
+          />
+        )}
       </AnimatePresence>
       <Toast message={toast} onDone={clearToast} />
     </Page>

@@ -36,6 +36,20 @@ const MESSAGES: Record<string, Bi> = {
   DRIVER_LINK_NOT_ALLOWED: { en: "Only driver app accounts can be linked to a driver.", ar: "يمكن ربط حسابات تطبيق السائق فقط بسائق." },
   ROLE_LOCKED: { en: "This role is locked and cannot be changed.", ar: "هذا الدور مقفل ولا يمكن تعديله." },
   ROLE_IN_USE: { en: "Users still have this role. Move them to another role first.", ar: "ما زال مستخدمون يحملون هذا الدور. انقلهم إلى دور آخر أولًا." },
+  READING_BELOW_ODOMETER: { en: "This reading is below the vehicle's current odometer. Reject it instead.", ar: "هذه القراءة أقل من عداد المركبة الحالي. ارفضها بدلًا من ذلك." },
+  NOT_APPROVED: { en: "Only an approved request can be closed. Refresh to see its current status.", ar: "يمكن إغلاق الطلب المعتمد فقط. حدّث الصفحة لرؤية حالته الحالية." },
+  INVALID_STATUS: { en: "This record has already moved on. Refresh to see its current status.", ar: "تغيرت حالة هذا السجل بالفعل. حدّث الصفحة لرؤية حالته الحالية." },
+  ALREADY_CLOSED: { en: "This record is already closed and can no longer change.", ar: "هذا السجل مغلق بالفعل ولا يمكن تعديله." },
+  ALREADY_COMPLETED: { en: "This maintenance record is already completed and locked.", ar: "سجل الصيانة هذا مكتمل ومقفل بالفعل." },
+  ALREADY_PAID: { en: "This violation is already marked as paid.", ar: "تم تسجيل هذه المخالفة كمدفوعة بالفعل." },
+  FILE_NOT_FOUND: { en: "Some attached files are missing.", ar: "بعض الملفات المرفقة غير موجودة." },
+};
+
+/** NOT_YOUR_TURN carries the request's status: say who it waits on now. */
+const NOT_YOUR_TURN: Record<string, Bi> = {
+  pendingAssistant: { en: "This request is waiting for the Assistant, not for your role.", ar: "هذا الطلب بانتظار المساعد وليس دورك." },
+  pendingFleetManager: { en: "This request has moved on and is now waiting for the Fleet Manager.", ar: "انتقل هذا الطلب وهو الآن بانتظار مدير الأسطول." },
+  other: { en: "This request has already been decided. Refresh to see where it stands.", ar: "تم البت في هذا الطلب بالفعل. حدّث الصفحة لمعرفة حالته." },
 };
 
 const DRIVER_ACCOUNT: Bi = { en: "Driver accounts sign in through the Tareg mobile app.", ar: "يسجل السائقون الدخول عبر تطبيق طارق للجوال." };
@@ -43,6 +57,10 @@ const DRIVER_ACCOUNT: Bi = { en: "Driver accounts sign in through the Tareg mobi
 export function errorText(e: unknown, tx: (b: Bi) => string): string {
   if (e instanceof DriverAccountError) return tx(DRIVER_ACCOUNT);
   if (e instanceof ApiError) {
+    if (e.code === "NOT_YOUR_TURN") {
+      const status = (e.details as { status?: string } | undefined)?.status ?? "";
+      return tx(NOT_YOUR_TURN[status] ?? NOT_YOUR_TURN.other);
+    }
     const known = MESSAGES[e.code];
     if (known) return tx(known);
     if (e.status === 400 || e.status === 422) {

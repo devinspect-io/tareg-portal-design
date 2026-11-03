@@ -30,6 +30,7 @@ interface Translations {
   switchToArabic: string;
   splashTagline: string;
   logout: string;
+  mockBadge: string;
   loadingDashboard: string;
   opening: string;
   notifications: string;
@@ -77,6 +78,7 @@ const dict: Record<"en" | "ar", Translations> = {
     switchToArabic: "التبديل إلى العربية",
     splashTagline: "Speed. Precision. Delivered.",
     logout: "Logout",
+    mockBadge: "Mock",
     loadingDashboard: "Loading your dashboard…",
     opening: "Opening",
     notifications: "Notifications",
@@ -117,6 +119,7 @@ const dict: Record<"en" | "ar", Translations> = {
     switchToArabic: "التبديل إلى العربية",
     splashTagline: "سرعة. دقة. وصول.",
     logout: "تسجيل الخروج",
+    mockBadge: "تجريبي",
     loadingDashboard: "جارٍ تحميل لوحة التحكم…",
     opening: "جارٍ فتح",
     notifications: "الإشعارات",

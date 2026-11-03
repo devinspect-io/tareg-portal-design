@@ -17,7 +17,13 @@ import MileageLive from "@/components/dashboard/live/MileageLive";
 import UsersLive from "@/components/dashboard/live/UsersLive";
 import DriversLive from "@/components/dashboard/live/DriversLive";
 import AssignmentsLive from "@/components/dashboard/live/AssignmentsLive";
-import { Block, ExpiryCell, Page, Status, section, toggleCard, useCardFilter } from "@/components/dashboard/ModulePage";
+import ApprovalsLive from "@/components/dashboard/live/ApprovalsLive";
+import BreakdownsLive from "@/components/dashboard/live/BreakdownsLive";
+import MaintenanceLive from "@/components/dashboard/live/MaintenanceLive";
+import AccidentsLive from "@/components/dashboard/live/AccidentsLive";
+import ViolationsLive from "@/components/dashboard/live/ViolationsLive";
+import ComplianceLive from "@/components/dashboard/live/ComplianceLive";
+import { ApprovalChain, Block, ExpiryCell, Page, Status, section, toggleCard, useCardFilter } from "@/components/dashboard/ModulePage";
 import {
   ACCIDENTS,
   APPROVALS,
@@ -57,7 +63,6 @@ import {
   type ReportId,
   type Expense,
   type ExpenseCategory,
-  type ApprovalStep,
   type ModuleKey,
   type NotificationCategory,
   type Priority,
@@ -311,6 +316,8 @@ function MileageView() {
 
 // ---------- Operations ----------
 
+// PARKED: mock version, replaced by live/MaintenanceLive.tsx (real API). Kept for offline demos; swap it back in the module switch below to preview.
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 function MaintenanceView() {
   const { tx, language } = useT();
   const names = useNames();
@@ -399,6 +406,8 @@ function MaintenanceView() {
   );
 }
 
+// PARKED: mock version, replaced by live/BreakdownsLive.tsx (real API). Kept for offline demos; swap it back in the module switch below to preview.
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 function BreakdownsView() {
   const { tx, language } = useT();
   const names = useNames();
@@ -448,34 +457,8 @@ function BreakdownsView() {
   );
 }
 
-const STEP_STYLE: Record<ApprovalStep["state"], string> = {
-  done: "bg-green-500 text-white",
-  current: "bg-accent-500 text-white ring-4 ring-accent-500/20",
-  waiting: "bg-neutral-200 text-neutral-500 dark:bg-neutral-700 dark:text-neutral-400",
-  rejected: "bg-red-500 text-white",
-};
-
-function ApprovalChain({ steps }: { steps: ApprovalStep[] }) {
-  const { tx } = useT();
-  return (
-    <ol className="flex flex-wrap items-center gap-2">
-      {steps.map((s, i) => (
-        <li key={i} className="flex items-center gap-2">
-          <span className="flex items-center gap-1.5">
-            <span className={`flex h-6 w-6 items-center justify-center rounded-full text-[11px] font-bold ${STEP_STYLE[s.state]}`}>
-              {s.state === "done" ? "✓" : s.state === "rejected" ? "✕" : i + 1}
-            </span>
-            <span className={`text-xs font-medium ${s.state === "current" ? "text-accent-700 dark:text-accent-400" : "text-neutral-600 dark:text-neutral-300"}`}>
-              {tx(s.role)}
-            </span>
-          </span>
-          {i < steps.length - 1 && <span className="h-px w-6 bg-neutral-300 dark:bg-neutral-700" aria-hidden="true" />}
-        </li>
-      ))}
-    </ol>
-  );
-}
-
+// PARKED: mock version, replaced by live/ApprovalsLive.tsx (real API). Kept for offline demos; swap it back in the module switch below to preview.
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 function ApprovalsView() {
   const { tx, language } = useT();
   const names = useNames();
@@ -569,6 +552,8 @@ type AccidentDraft = {
   status: StatusCode;
 };
 
+// PARKED: mock version, replaced by live/AccidentsLive.tsx (real API). Kept for offline demos; swap it back in the module switch below to preview.
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 function AccidentsView() {
   const { tx, language } = useT();
   const names = useNames();
@@ -750,6 +735,8 @@ function AccidentsView() {
   );
 }
 
+// PARKED: mock version, replaced by live/ViolationsLive.tsx (real API). Kept for offline demos; swap it back in the module switch below to preview.
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 function ViolationsView() {
   const { tx, language } = useT();
   const names = useNames();
@@ -794,6 +781,8 @@ function ViolationsView() {
 
 // ---------- Compliance & finance ----------
 
+// PARKED: mock version, replaced by live/ComplianceLive.tsx (real API). Kept for offline demos; swap it back in the module switch below to preview.
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 function ComplianceView() {
   const { tx, language } = useT();
   const items = complianceItems();
@@ -1791,12 +1780,12 @@ export default function FleetModule({ moduleKey, onNavigate }: { moduleKey: Modu
     case "drivers": return <DriversLive />;
     case "assignments": return <AssignmentsLive />;
     case "mileage": return <MileageLive />;
-    case "maintenance": return <MaintenanceView />;
-    case "breakdowns": return <BreakdownsView />;
-    case "approvals": return <ApprovalsView />;
-    case "accidents": return <AccidentsView />;
-    case "violations": return <ViolationsView />;
-    case "compliance": return <ComplianceView />;
+    case "maintenance": return <MaintenanceLive />;
+    case "breakdowns": return <BreakdownsLive />;
+    case "approvals": return <ApprovalsLive />;
+    case "accidents": return <AccidentsLive />;
+    case "violations": return <ViolationsLive />;
+    case "compliance": return <ComplianceLive />;
     case "fuel": return <FuelView />;
     case "expenses": return <ExpensesView />;
     case "history": return <HistoryView />;

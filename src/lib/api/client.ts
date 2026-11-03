@@ -97,7 +97,29 @@ async function request<T>(method: string, path: string, opts: { query?: Query; b
   return (json?.data ?? null) as T;
 }
 
+/**
+ * Raw bytes of a signed-in download (GET /files/:id). The token can't ride on
+ * an <img src>, so files are fetched here and shown through an object URL.
+ */
+async function requestBlob(path: string): Promise<Blob> {
+  if (!apiConfigured) throw new ApiError(0, "NOT_CONFIGURED", "NEXT_PUBLIC_API_BASE_URL is not set");
+  const token = getToken();
+  let res: Response;
+  try {
+    res = await fetch(buildUrl(path), { headers: token ? { Authorization: `Bearer ${token}` } : {} });
+  } catch {
+    throw new ApiError(0, "NETWORK", "Could not reach the server");
+  }
+  if (!res.ok) {
+    const err = (await res.json().catch(() => null))?.error ?? {};
+    if (res.status === 401 && token) onUnauthorized?.();
+    throw new ApiError(res.status, err.code ?? `HTTP_${res.status}`, err.message ?? res.statusText, err.details);
+  }
+  return res.blob();
+}
+
 export const api = {
+  blob: requestBlob,
   get: <T>(path: string, query?: Query) => request<T>("GET", path, { query }),
   /** A paged list: `{ items, total, page, pageSize }`. */
   page: async <T>(path: string, query?: Query): Promise<Paged<T>> => {

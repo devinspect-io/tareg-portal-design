@@ -2,11 +2,13 @@
 
 import { AnimatePresence, motion } from "framer-motion";
 import Image from "next/image";
-import { APPROVALS, BREAKDOWNS, NAV_SECTIONS, type ModuleKey } from "@/lib/fleet-data";
-import { useNotifications } from "@/lib/useNotifications";
+import { NAV_SECTIONS, type ModuleKey } from "@/lib/fleet-data";
+import MockTag from "@/components/dashboard/MockTag";
 import { useT } from "@/lib/translations";
 import logoLight from "@/assets/logo-white-bg.png";
 import logoDark from "@/assets/logo-dark-bg.png";
+import { api } from "@/lib/api/client";
+import { useApi } from "@/lib/api/hooks";
 import { useCanOpen } from "@/lib/api/session";
 
 type SidebarProps = {
@@ -18,11 +20,30 @@ type SidebarProps = {
   onCloseMobile: () => void;
 };
 
-/** Counts shown as pills next to nav items that need attention. */
-const STATIC_BADGES: Partial<Record<ModuleKey, number>> = {
-  approvals: APPROVALS.filter((a) => a.status === "pending").length,
-  breakdowns: BREAKDOWNS.filter((b) => b.status !== "closed").length,
-};
+/** Pageless count: ask for one row and read the total. */
+const count = (path: string, status: string) => api.page(path, { status, pageSize: 1 }).then((p) => p.total);
+
+/**
+ * Live "needs attention" counts for the nav pills: requests waiting on a
+ * decision and breakdowns not yet closed. The list filters take one status
+ * each, so each figure is two counts. Refreshed whenever the open module
+ * changes, so acting on a record updates its pill on the next navigation.
+ */
+function useNavBadges(active: ModuleKey): Partial<Record<ModuleKey, number>> {
+  const canOpen = useCanOpen();
+  const approvals = canOpen("approvals");
+  const breakdowns = canOpen("breakdowns");
+  const { data } = useApi(async () => {
+    const [assistant, manager, open, inProgress] = await Promise.all([
+      approvals ? count("/approvals", "pendingAssistant") : 0,
+      approvals ? count("/approvals", "pendingFleetManager") : 0,
+      breakdowns ? count("/breakdowns", "open") : 0,
+      breakdowns ? count("/breakdowns", "inProgress") : 0,
+    ]);
+    return { approvals: assistant + manager, breakdowns: open + inProgress };
+  }, `${approvals}${breakdowns}${active}`);
+  return data ?? {};
+}
 
 /** Simple inline icon set keyed by nav item icon name. */
 export function NavIcon({ name, size = 19 }: { name: string; size?: number }) {
@@ -164,9 +185,8 @@ function NavList({
   onLogout,
 }: Pick<SidebarProps, "active" | "onSelect" | "onLogout">) {
   const { t, tx } = useT();
-  const { unread } = useNotifications();
   const canOpen = useCanOpen();
-  const badges: Partial<Record<ModuleKey, number>> = { ...STATIC_BADGES, notifications: unread };
+  const badges = useNavBadges(active);
 
   return (
     <div className="flex h-full flex-col">
@@ -204,7 +224,9 @@ function NavList({
                   >
                     <NavIcon name={item.icon} />
                     <span className="flex-1 truncate">{tx(item.label)}</span>
-                    {badge ? (
+                    {item.mock ? (
+                      <MockTag onDark={isActive} />
+                    ) : badge ? (
                       <span
                         className={`min-w-5 rounded-full px-1.5 text-center text-[11px] leading-5 font-bold ${
                           isActive ? "bg-white/20 text-white" : "bg-accent-100 text-accent-700 dark:bg-accent-950/60 dark:text-accent-400"
