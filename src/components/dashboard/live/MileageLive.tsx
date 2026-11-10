@@ -11,7 +11,9 @@ import DataTable from "@/components/dashboard/DataTable";
 import { Block, Page, Status, toggleCard } from "@/components/dashboard/ModulePage";
 import { FilterBar, Field, TextArea, Toast } from "@/components/dashboard/RecordTools";
 import { Dialog, Fact, FormError, Lightbox, LiveState, Pager, Refreshing, ghostBtn, useDebounced } from "@/components/dashboard/live/LiveKit";
+import { FileView } from "@/components/dashboard/live/Evidence";
 import { api } from "@/lib/api/client";
+import { isDirectSrc } from "@/lib/api/files";
 import { useApi, useApiPage } from "@/lib/api/hooks";
 import { useCan } from "@/lib/api/session";
 import type { ApiDriver, ApiMileage, ApiVehicle } from "@/lib/api/types";
@@ -36,9 +38,12 @@ function CameraIcon({ size = 14 }: { size?: number }) {
   );
 }
 
-function Photo({ src, className = "", contain = false }: { src: string; className?: string; contain?: boolean }) {
+// Older readings carry a data: URL or a plain URL; newer app builds send a file id
+// from the files service (rendered by FileView, which also accepts direct sources).
+function Photo({ src, className = "", contain = false, lightbox = false }: { src: string; className?: string; contain?: boolean; lightbox?: boolean }) {
   const { tx } = useT();
   const [failed, setFailed] = useState(false);
+  if (!isDirectSrc(src)) return <FileView id={src} size={lightbox ? "lightbox" : contain ? "large" : "thumb"} className={className} />;
   if (failed) {
     return (
       <span className={`flex flex-col items-center justify-center gap-1 bg-neutral-100 text-neutral-400 dark:bg-neutral-800 ${className}`}>
@@ -470,7 +475,7 @@ export default function MileageLive() {
             count={lightbox.photos.length}
             start={lightbox.start}
             onClose={closeLightbox}
-            render={(i) => <Photo key={i} src={lightbox.photos[i]} contain className="max-h-[85vh] w-full max-w-5xl rounded-lg" />}
+            render={(i) => <Photo key={i} src={lightbox.photos[i]} contain lightbox className="max-h-[85vh] w-full max-w-5xl rounded-lg" />}
           />
         )}
       </AnimatePresence>

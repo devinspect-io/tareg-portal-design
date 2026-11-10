@@ -42,7 +42,10 @@ export function fmtDate(iso: string, lang: Language): string {
 }
 
 export function fmtSAR(amount: number, lang: Language): string {
-  const n = amount.toLocaleString("en-US");
+  // Whole riyals stay clean ("SAR 1,750"); halalas always show two digits
+  // ("SAR 640.50", never "SAR 640.5").
+  const whole = Number.isInteger(amount);
+  const n = amount.toLocaleString("en-US", { minimumFractionDigits: whole ? 0 : 2, maximumFractionDigits: 2 });
   return lang === "ar" ? `${n} ر.س` : `SAR ${n}`;
 }
 
@@ -99,6 +102,8 @@ export const STATUS = {
   expiringSoon: { tone: "warn", label: { en: "Expiring soon", ar: "ينتهي قريبًا" } },
   paid: { tone: "good", label: { en: "Paid", ar: "مدفوع" } },
   unpaid: { tone: "bad", label: { en: "Unpaid", ar: "غير مدفوع" } },
+  current: { tone: "info", label: { en: "Current", ar: "حالي" } },
+  ended: { tone: "neutral", label: { en: "Ended", ar: "منتهٍ" } },
 } satisfies Record<string, { tone: Tone; label: Bi }>;
 
 export type StatusCode = keyof typeof STATUS;
@@ -187,13 +192,13 @@ export const NAV_SECTIONS: NavSection[] = [
     items: [
       { key: "compliance", icon: "shield", label: { en: "Compliance & Expiries", ar: "الامتثال والصلاحيات" } },
       { key: "fuel", icon: "fuel", label: { en: "Fuel Benefits", ar: "مخصصات الوقود" }, mock: true },
-      { key: "expenses", icon: "receipt", label: { en: "Expense Invoices", ar: "فواتير المصروفات" }, mock: true },
+      { key: "expenses", icon: "receipt", label: { en: "Expense Invoices", ar: "فواتير المصروفات" } },
     ],
   },
   {
     title: { en: "Records", ar: "السجلات" },
     items: [
-      { key: "history", icon: "history", label: { en: "Vehicle & Driver History", ar: "سجل المركبات والسائقين" }, mock: true },
+      { key: "history", icon: "history", label: { en: "Vehicle & Driver History", ar: "سجل المركبات والسائقين" } },
       { key: "reports", icon: "chart", label: { en: "Reports", ar: "التقارير" }, mock: true },
     ],
   },
@@ -201,7 +206,7 @@ export const NAV_SECTIONS: NavSection[] = [
     title: { en: "Administration", ar: "الإدارة" },
     items: [
       { key: "users", icon: "users", label: { en: "Users & Roles", ar: "المستخدمون والصلاحيات" } },
-      { key: "settings", icon: "gears", label: { en: "Settings", ar: "الإعدادات" }, mock: true },
+      { key: "settings", icon: "gears", label: { en: "Settings", ar: "الإعدادات" } },
     ],
   },
 ];

@@ -42,7 +42,18 @@ const MESSAGES: Record<string, Bi> = {
   ALREADY_CLOSED: { en: "This record is already closed and can no longer change.", ar: "هذا السجل مغلق بالفعل ولا يمكن تعديله." },
   ALREADY_COMPLETED: { en: "This maintenance record is already completed and locked.", ar: "سجل الصيانة هذا مكتمل ومقفل بالفعل." },
   ALREADY_PAID: { en: "This violation is already marked as paid.", ar: "تم تسجيل هذه المخالفة كمدفوعة بالفعل." },
-  FILE_NOT_FOUND: { en: "Some attached files are missing.", ar: "بعض الملفات المرفقة غير موجودة." },
+  FILE_NOT_FOUND: { en: "Some attached files are missing or were uploaded by someone else.", ar: "بعض الملفات المرفقة غير موجودة أو رفعها شخص آخر." },
+  FILES_SERVICE_UNAVAILABLE: { en: "The file service is not reachable right now. Try again in a moment.", ar: "خدمة الملفات غير متاحة حاليًا. حاول مرة أخرى بعد قليل." },
+  FILES_SERVICE_ERROR: { en: "The file service returned an unexpected response. Try again.", ar: "أرجعت خدمة الملفات استجابة غير متوقعة. حاول مرة أخرى." },
+  NOT_ENOUGH_PHOTOS: { en: "Not enough odometer photos. Add the minimum number set in Settings.", ar: "عدد صور العداد غير كافٍ. أضف الحد الأدنى المحدد في الإعدادات." },
+  PHOTOS_REQUIRED: { en: "A photo is required for this report.", ar: "الصورة مطلوبة لهذا البلاغ." },
+  MAINTENANCE_REQUESTS_DISABLED: { en: "Maintenance requests from drivers are turned off in Settings.", ar: "طلبات الصيانة من السائقين متوقفة في الإعدادات." },
+  ALREADY_RECORDED: { en: "This request already has a maintenance record.", ar: "لهذا الطلب سجل صيانة بالفعل." },
+  NOT_A_DRIVER: { en: "Only driver accounts can do this.", ar: "حسابات السائقين فقط يمكنها تنفيذ هذا الإجراء." },
+  NO_ASSIGNED_VEHICLE: { en: "This driver has no vehicle assigned.", ar: "لا توجد مركبة مسندة لهذا السائق." },
+  NOT_A_MAINTENANCE_REQUEST: { en: "An expense claim cannot have a maintenance record.", ar: "لا يمكن أن يكون لمطالبة المصروفات سجل صيانة." },
+  REQUEST_NOT_FOUND: { en: "That request was not found for this driver.", ar: "لم يتم العثور على هذا الطلب لهذا السائق." },
+  REQUEST_NOT_APPROVED: { en: "Maintenance needs an approved request first.", ar: "تحتاج الصيانة إلى طلب معتمد أولًا." },
 };
 
 /** NOT_YOUR_TURN carries the request's status: say who it waits on now. */

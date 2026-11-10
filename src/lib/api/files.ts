@@ -46,13 +46,22 @@ function release(id: string, entry: Entry) {
   }, 1000);
 }
 
+/**
+ * Older kilometer readings hold a `data:` URL or a plain URL instead of a file
+ * id. Those render directly; anything else is a file id fetched with the token.
+ */
+export const isDirectSrc = (s: string) => s.startsWith("data:") || s.startsWith("http");
+
 export const isPdf = (f: LoadedFile | undefined) => f?.type === "application/pdf";
 
 /** A file's object URL and type, or the error that stopped it loading. */
 export function useFile(id: string): { file?: LoadedFile; error: unknown; loading: boolean } {
   const [state, setState] = useState<{ id: string; file?: LoadedFile; error: unknown }>({ id, error: null });
 
+  const direct = isDirectSrc(id);
+
   useEffect(() => {
+    if (direct) return;
     let live = true;
     const entry = acquire(id);
     entry.promise.then(
@@ -63,7 +72,9 @@ export function useFile(id: string): { file?: LoadedFile; error: unknown; loadin
       live = false;
       release(id, entry);
     };
-  }, [id]);
+  }, [id, direct]);
+
+  if (direct) return { file: { url: id, type: "image/*" }, error: null, loading: false };
 
   // Ignore a result left over from the previous id while the new one loads.
   const mine = state.id === id ? state : { error: null, file: undefined };

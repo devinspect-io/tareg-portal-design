@@ -125,11 +125,11 @@ export function Field({ label, children, wide = false }: { label: string; childr
   );
 }
 
-export function TextInput({ value, onChange, placeholder, dir }: { value: string; onChange: (v: string) => void; placeholder?: string; dir?: "ltr" | "rtl" }) {
-  return <input value={value} onChange={(e) => onChange(e.target.value)} placeholder={placeholder} dir={dir} className={inputClass} />;
+export function TextInput({ value, onChange, placeholder, dir, disabled }: { value: string; onChange: (v: string) => void; placeholder?: string; dir?: "ltr" | "rtl"; disabled?: boolean }) {
+  return <input value={value} onChange={(e) => onChange(e.target.value)} placeholder={placeholder} dir={dir} disabled={disabled} className={`${inputClass} ${disabled ? "cursor-not-allowed opacity-60" : ""}`} />;
 }
 
-export function NumberInput({ value, onChange, suffix }: { value: number; onChange: (v: number) => void; suffix?: string }) {
+export function NumberInput({ value, onChange, suffix, disabled }: { value: number; onChange: (v: number) => void; suffix?: string; disabled?: boolean }) {
   return (
     <div className="relative">
       <input
@@ -137,7 +137,8 @@ export function NumberInput({ value, onChange, suffix }: { value: number; onChan
         min={0}
         value={Number.isFinite(value) ? value : ""}
         onChange={(e) => onChange(Number(e.target.value))}
-        className={`${inputClass} ${suffix ? "pe-14" : ""}`}
+        disabled={disabled}
+        className={`${inputClass} ${suffix ? "pe-14" : ""} ${disabled ? "cursor-not-allowed opacity-60" : ""}`}
       />
       {suffix && <span className="pointer-events-none absolute end-3 top-1/2 -translate-y-1/2 text-xs text-neutral-400">{suffix}</span>}
     </div>
@@ -285,15 +286,16 @@ export function Toast({ message, onDone }: { message: string | null; onDone: () 
 }
 
 /** On/off switch; the knob slides toward the reading end when on. */
-export function Toggle({ checked, onChange, label }: { checked: boolean; onChange: (v: boolean) => void; label: string }) {
+export function Toggle({ checked, onChange, label, disabled }: { checked: boolean; onChange: (v: boolean) => void; label: string; disabled?: boolean }) {
   return (
     <button
       type="button"
       role="switch"
       aria-checked={checked}
       aria-label={label}
+      disabled={disabled}
       onClick={() => onChange(!checked)}
-      className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors ${checked ? "bg-prime-600" : "bg-neutral-300 dark:bg-neutral-700"}`}
+      className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors ${disabled ? "cursor-not-allowed opacity-60" : ""} ${checked ? "bg-prime-600" : "bg-neutral-300 dark:bg-neutral-700"}`}
     >
       <motion.span
         className="absolute h-5 w-5 rounded-full bg-white shadow"

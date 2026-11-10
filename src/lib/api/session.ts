@@ -103,6 +103,9 @@ export function useCanOpen() {
   return (key: string) => {
     if (key === "users") return can("users:view") || can("roles:view");
     if (key === "ai-reporting") return can("reports:view");
+    // Expense Invoices reads GET /maintenance, which the API guards with
+    // maintenance:view: without it the screen could only show a 403.
+    if (key === "expenses") return can("expenses:view") && can("maintenance:view");
     return can(`${key}:view`);
   };
 }

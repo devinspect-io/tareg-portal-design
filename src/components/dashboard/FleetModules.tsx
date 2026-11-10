@@ -23,6 +23,9 @@ import MaintenanceLive from "@/components/dashboard/live/MaintenanceLive";
 import AccidentsLive from "@/components/dashboard/live/AccidentsLive";
 import ViolationsLive from "@/components/dashboard/live/ViolationsLive";
 import ComplianceLive from "@/components/dashboard/live/ComplianceLive";
+import HistoryLive from "@/components/dashboard/live/HistoryLive";
+import ExpensesLive from "@/components/dashboard/live/ExpensesLive";
+import SettingsLive from "@/components/dashboard/live/SettingsLive";
 import { ApprovalChain, Block, ExpiryCell, Page, Status, section, toggleCard, useCardFilter } from "@/components/dashboard/ModulePage";
 import {
   ACCIDENTS,
@@ -909,6 +912,8 @@ type ExpenseDraft = {
   status: StatusCode;
 };
 
+// PARKED: mock version, replaced by live/ExpensesLive.tsx (real API). Kept for offline demos; swap it back in the module switch below to preview.
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 function ExpensesView() {
   const { tx, language } = useT();
   const names = useNames();
@@ -1077,6 +1082,8 @@ function ExpensesView() {
 
 type TimelineEvent = { date: string; title: Bi; detail: string; tone: Tone };
 
+// PARKED: mock version, replaced by live/HistoryLive.tsx (real API). Kept for offline demos; swap it back in the module switch below to preview.
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 function HistoryView() {
   const { tx, language } = useT();
   const names = useNames();
@@ -1574,6 +1581,8 @@ function SwitchRow({ label, hint, checked, onChange }: { label: Bi; hint?: Bi; c
   );
 }
 
+// PARKED: mock version, replaced by live/SettingsLive.tsx (real API). Kept for offline demos; swap it back in the module switch below to preview.
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 function SettingsView() {
   const { tx, language } = useT();
   const { settings, save, defaults } = useSettingsStore();
@@ -1787,12 +1796,12 @@ export default function FleetModule({ moduleKey, onNavigate }: { moduleKey: Modu
     case "violations": return <ViolationsLive />;
     case "compliance": return <ComplianceLive />;
     case "fuel": return <FuelView />;
-    case "expenses": return <ExpensesView />;
-    case "history": return <HistoryView />;
+    case "expenses": return <ExpensesLive />;
+    case "history": return <HistoryLive />;
     case "reports": return <ReportsView />;
     case "notifications": return <NotificationsView onNavigate={onNavigate} />;
     case "users": return <UsersLive />;
-    case "settings": return <SettingsView />;
+    case "settings": return <SettingsLive />;
     default: return null;
   }
 }

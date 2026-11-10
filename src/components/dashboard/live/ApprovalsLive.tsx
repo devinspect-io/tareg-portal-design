@@ -12,6 +12,7 @@ import { AnimatePresence } from "framer-motion";
 import DataTable from "@/components/dashboard/DataTable";
 import { ApprovalChain, Block, Page, Status, toggleCard } from "@/components/dashboard/ModulePage";
 import { FilterBar, Toast } from "@/components/dashboard/RecordTools";
+import { FileGallery, FileLightbox, FileThumbs } from "@/components/dashboard/live/Evidence";
 import {
   APPROVAL_TYPE_LABEL,
   ActionButton,
@@ -73,8 +74,9 @@ function Actions({ a, onAct, size = "sm" }: { a: ApiApproval; onAct: (x: Action)
   );
 }
 
-function Detail({ a, onClose, onAct }: { a: ApiApproval; onClose: () => void; onAct: (x: Action) => void }) {
+function Detail({ a, onClose, onAct, onZoom }: { a: ApiApproval; onClose: () => void; onAct: (x: Action) => void; onZoom: (i: number) => void }) {
   const { tx, language } = useT();
+  const photos = a.photos ?? [];
   const events: { label: string; at: string }[] = [
     { label: tx({ en: "Submitted by the driver", ar: "أرسله السائق" }), at: a.createdAt },
     ...(a.assistantApprovedAt ? [{ label: tx({ en: "Passed on by the Assistant", ar: "مرّره المساعد" }), at: a.assistantApprovedAt }] : []),
@@ -107,6 +109,12 @@ function Detail({ a, onClose, onAct }: { a: ApiApproval; onClose: () => void; on
             <span className="font-normal whitespace-pre-line">{a.note}</span>
           </Fact>
         </div>
+        {photos.length > 0 && (
+          <div className="space-y-2">
+            <p className="text-xs font-semibold text-neutral-500 dark:text-neutral-400">{tx({ en: "Photos of what needs the work", ar: "صور ما يحتاج إلى العمل" })}</p>
+            <FileGallery ids={photos} empty="" onZoom={onZoom} />
+          </div>
+        )}
         {a.status === "rejected" && a.rejectionReason && (
           <div className="rounded-lg bg-red-50 px-3 py-2.5 text-sm dark:bg-red-950/40">
             <p className="text-xs font-semibold text-red-700 dark:text-red-300">{tx({ en: "Rejection reason", ar: "سبب الرفض" })}</p>
@@ -143,6 +151,7 @@ export default function ApprovalsLive() {
   const q = useDebounced(search.trim());
 
   const [detail, setDetail] = useState<ApiApproval | null>(null);
+  const [lightbox, setLightbox] = useState<{ ids: string[]; start: number } | null>(null);
   const [action, setAction] = useState<Action | null>(null);
   const [toast, setToast] = useState<string | null>(null);
 
@@ -277,6 +286,7 @@ export default function ApprovalsLive() {
               tx({ en: "Driver", ar: "السائق" }),
               tx({ en: "Vehicle", ar: "المركبة" }),
               tx({ en: "Amount", ar: "المبلغ" }),
+              tx({ en: "Photos", ar: "الصور" }),
               tx({ en: "Approval chain", ar: "مسار الموافقة" }),
               tx({ en: "Status", ar: "الحالة" }),
               "",
@@ -295,6 +305,7 @@ export default function ApprovalsLive() {
                 <DriverCell key="d" driver={a.driver} />,
                 <VehicleCell key="v" vehicle={a.vehicle} />,
                 <span key="am" className="font-semibold text-foreground">{fmtSAR(a.amount, language)}</span>,
+                <FileThumbs key="ph" ids={a.photos ?? []} onOpen={() => setLightbox({ ids: a.photos ?? [], start: 0 })} />,
                 <ApprovalChain key="c" steps={stepsOf(a)} />,
                 <Status key="s" code={a.status} />,
                 a.canApprove || a.canReject || a.canClose ? (
@@ -312,7 +323,8 @@ export default function ApprovalsLive() {
       </Block>
 
       <AnimatePresence>
-        {detail && <Detail key="detail" a={detail} onClose={closeDetail} onAct={setAction} />}
+        {detail && <Detail key="detail" a={detail} onClose={closeDetail} onAct={setAction} onZoom={(i) => setLightbox({ ids: detail.photos ?? [], start: i })} />}
+        {lightbox && <FileLightbox key="lb" ids={lightbox.ids} start={lightbox.start} onClose={() => setLightbox(null)} />}
         {action && (
           <ActionDialog
             key={`${action.kind}-${action.a.id}`}

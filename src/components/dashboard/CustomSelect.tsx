@@ -13,6 +13,8 @@ type CustomSelectProps = {
   options: SelectOption[];
   placeholder?: string;
   error?: boolean;
+  /** Read-only look: shows the value, does not open. */
+  disabled?: boolean;
 };
 
 const norm = (o: SelectOption) => (typeof o === "string" ? { value: o, label: o } : o);
@@ -25,6 +27,7 @@ export default function CustomSelect({
   options,
   placeholder = "Select…",
   error,
+  disabled = false,
 }: CustomSelectProps) {
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
@@ -55,13 +58,14 @@ export default function CustomSelect({
         type="button"
         id={id}
         onClick={() => setOpen((o) => !o)}
+        disabled={disabled}
         aria-haspopup="listbox"
         aria-expanded={open}
         className={`flex w-full items-center justify-between rounded-lg border bg-white px-3 py-2.5 text-start text-sm outline-none transition-colors focus:border-prime-500 focus:ring-4 focus:ring-prime-500/10 dark:bg-neutral-800 ${
           error
             ? "border-prime-500 ring-4 ring-prime-500/10 dark:border-prime-500"
             : "border-neutral-200 dark:border-neutral-700"
-        } ${value ? "text-foreground" : "text-neutral-400 dark:text-neutral-500"}`}
+        } ${value ? "text-foreground" : "text-neutral-400 dark:text-neutral-500"} ${disabled ? "cursor-not-allowed opacity-60" : ""}`}
       >
         <span className="truncate">{selectedLabel || placeholder}</span>
         <motion.svg

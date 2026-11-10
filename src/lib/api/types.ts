@@ -144,7 +144,7 @@ export type ApiMileage = Entity & {
   vehicleId: string;
   previous: number;
   reading: number;
-  /** URLs, or `data:image/jpeg;base64,...` straight from the driver app. */
+  /** File ids (newer app builds), or URLs / `data:image/jpeg;base64,...` on older readings. */
   photos: string[];
   status: MileageStatus;
   reviewedBy: string | null;
@@ -172,6 +172,8 @@ export type ApiApproval = Entity & {
   vehicleId: string;
   amount: number;
   note: string;
+  /** File ids of what needs the work (e.g. the damaged part). May be empty. */
+  photos: string[];
   status: ApprovalStatus;
   assistantApprovedBy: string | null;
   assistantApprovedAt: string | null;
@@ -303,3 +305,70 @@ export type ApiComplianceItem = {
   /** Reminder stage reached (30, 7, 3 or 1 days); null before the first and once expired. */
   reminderDay: number | null;
 };
+
+// ---------- History ----------
+
+export type HistoryType = "maintenance" | "breakdown" | "accident" | "violation" | "mileage" | "assignment";
+
+type HistoryBase = {
+  id: string;
+  ref: string;
+  /** The day it happened; for an assignment, the day it started. */
+  date: string;
+  /** Per type: see the README table (inProgress, open, unpaid, inReview, current...). */
+  status: string | null;
+  vehicle: VehicleSummary | null;
+  driver: RecordSummary | null;
+  createdAt: string;
+};
+
+/** One timeline entry. `detail` depends on `type` (GET /history/vehicles/:id and /history/drivers/:id). */
+export type HistoryEvent = HistoryBase &
+  (
+    | {
+        type: "maintenance";
+        detail: {
+          category: ApprovalType;
+          description: string;
+          vendor: string;
+          cost: number;
+          emergency: boolean;
+          invoicePhotos: string[];
+          nextServiceDate: string | null;
+          nextServiceKm: number | null;
+        };
+      }
+    | { type: "breakdown"; detail: { location: string; description: string; major: boolean; photos: string[]; resolution: string | null } }
+    | { type: "accident"; detail: { location: string; description: string; reference: string | null; cost: number | null; photos: string[]; notes: string | null } }
+    | { type: "violation"; detail: { violationType: string; location: string; fine: number; photos: string[] } }
+    | { type: "mileage"; detail: { reading: number; previous: number; distance: number; photos: string[] } }
+    | { type: "assignment"; detail: { from: string; to: string | null; startOdometer: number; endOdometer: number | null } }
+  );
+
+export type HistoryResponse<S> = { subject: S; events: HistoryEvent[] };
+
+// ---------- Settings ----------
+
+export type KmFrequency = "daily" | "weekly" | "biweekly" | "monthly";
+export type NotificationCategoryKey = "maintenance" | "approvals" | "compliance" | "incidents" | "submissions" | "expenses";
+
+/** GET /settings. PATCH /settings takes any subset of these (unknown fields are a 400). */
+export type ApiSettings = {
+  companyName: string;
+  crNumber: string;
+  /** May be "". */
+  contactEmail: string;
+  contactPhone: string;
+  /** 1 to 10 distinct days (1 to 365), largest first. */
+  expiryReminderDays: number[];
+  maintenanceDaysBefore: number;
+  maintenanceKmBefore: number;
+  notificationCategories: Record<NotificationCategoryKey, boolean>;
+  kmFrequency: KmFrequency;
+  minPhotos: number;
+  driversCanRequestMaintenance: boolean;
+  breakdownPhotoRequired: boolean;
+  defaultLanguage: "ar" | "en";
+};
+
+export type SettingsPatch = Partial<Omit<ApiSettings, "notificationCategories">> & { notificationCategories?: Partial<Record<NotificationCategoryKey, boolean>> };
