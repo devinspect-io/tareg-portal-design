@@ -180,7 +180,7 @@ export default function LoginForm() {
   return (
     <div
       onMouseMove={reduceMotion ? undefined : handleMouseMove}
-      className="relative flex min-h-screen items-center justify-center overflow-hidden bg-gradient-to-b from-white to-prime-50 px-4 text-neutral-900"
+      className="always-light relative flex min-h-screen items-center justify-center overflow-hidden bg-gradient-to-b from-white to-prime-50 px-4 text-neutral-900"
     >
       <RouteBackground />
 

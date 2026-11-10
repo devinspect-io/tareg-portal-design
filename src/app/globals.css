@@ -1,7 +1,9 @@
 @import "tailwindcss";
 
-/* Class-driven dark mode (manual toggle), not just prefers-color-scheme */
-@custom-variant dark (&:where(.dark, .dark *));
+/* Class-driven dark mode (manual toggle), not just prefers-color-scheme.
+   Anything inside .always-light (the sign-in page, which is designed white
+   only) ignores it, so its controls never turn dark on a white card. */
+@custom-variant dark (&:where(.dark, .dark *):where(:not(.always-light, .always-light *)));
 
 :root {
   --background: #ffffff;
@@ -89,4 +91,20 @@ input:-webkit-autofill:active {
   box-shadow: 0 0 0 1000px #262626 inset !important;
   -webkit-text-fill-color: #f5f5f5 !important;
   caret-color: #f5f5f5;
+}
+
+/* Screens that stay white in either theme (the sign-in page): keep the light
+   autofill colors even when dark mode is on, or a saved email and password
+   fill in as dark grey boxes on the white card. */
+.always-light {
+  color-scheme: light;
+}
+
+.dark .always-light input:-webkit-autofill,
+.dark .always-light input:-webkit-autofill:hover,
+.dark .always-light input:-webkit-autofill:focus,
+.dark .always-light input:-webkit-autofill:active {
+  box-shadow: 0 0 0 1000px #ffffff inset !important;
+  -webkit-text-fill-color: #171717 !important;
+  caret-color: #171717;
 }

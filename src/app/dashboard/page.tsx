@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import { useRouter } from "next/navigation";
 import { AnimatePresence, motion } from "framer-motion";
 import Sidebar, { NavIcon } from "@/components/dashboard/Sidebar";
@@ -16,7 +16,7 @@ import Loader from "@/components/Loader";
 import { primeChartOptions, PRIME_BLUE, ACCENT_ORANGE, CHART_COLORS } from "@/lib/chart-theme";
 import { useTheme } from "@/lib/useTheme";
 import { useT, type Bi } from "@/lib/translations";
-import { restoreSession, signOut, useCan, useSession } from "@/lib/api/session";
+import { restoreSession, signOut, useCan, useCanOpen, useSession } from "@/lib/api/session";
 import { api } from "@/lib/api/client";
 import { useApi } from "@/lib/api/hooks";
 import type { ApiApproval, ApiComplianceItem, ApiMileage, ApiServiceDue } from "@/lib/api/types";
@@ -37,6 +37,34 @@ import {
   type ModuleKey,
   type StatusCode,
 } from "@/lib/fleet-data";
+
+// The open screen lives in the URL (/dashboard?view=settings) so a refresh or
+// a shared link lands on the same screen, and Back steps between screens.
+function viewFromUrl(): ModuleKey {
+  const v = new URLSearchParams(window.location.search).get("view");
+  return v && v in MODULE_LABELS ? (v as ModuleKey) : "dashboard";
+}
+
+function urlFor(key: ModuleKey) {
+  return key === "dashboard" ? "/dashboard" : `/dashboard?view=${key}`;
+}
+
+const VIEW_EVENT = "tareg:view";
+
+function subscribeView(onChange: () => void) {
+  window.addEventListener("popstate", onChange);
+  window.addEventListener(VIEW_EVENT, onChange);
+  return () => {
+    window.removeEventListener("popstate", onChange);
+    window.removeEventListener(VIEW_EVENT, onChange);
+  };
+}
+
+function goToView(key: ModuleKey, replace = false) {
+  if (replace) window.history.replaceState(null, "", urlFor(key));
+  else window.history.pushState(null, "", urlFor(key));
+  window.dispatchEvent(new Event(VIEW_EVENT));
+}
 
 // Floating AI assistant (bottom-right) is hidden for now, not removed. Flip to bring it back.
 const SHOW_AI_ASSISTANT = false;
@@ -245,11 +273,13 @@ export default function DashboardPage() {
   const session = useSession();
   const [booting, setBooting] = useState(true);
   const [mobileOpen, setMobileOpen] = useState(false);
-  const [view, setView] = useState<ModuleKey>("dashboard");
+  // The server render has no URL, so it starts on the dashboard; the boot
+  // loader covers the switch, so the dashboard never flashes first.
+  const urlView = useSyncExternalStore(subscribeView, viewFromUrl, () => "dashboard" as ModuleKey);
   const [opening, setOpening] = useState<ModuleKey | null>(null);
   const [filterFrom, setFilterFrom] = useState("");
   const [filterTo, setFilterTo] = useState("");
-
+  const canOpen = useCanOpen();
 
   useEffect(() => {
     const timer = setTimeout(() => setBooting(false), 1100);
@@ -265,6 +295,13 @@ export default function DashboardPage() {
     if (session.status === "signedOut") router.replace("/login");
   }, [session.status, router]);
   const ready = !booting && session.status === "signedIn";
+
+  // A URL naming a screen this role can't open falls back to the dashboard.
+  const blocked = session.status === "signedIn" && urlView !== "dashboard" && !canOpen(urlView);
+  const view: ModuleKey = blocked ? "dashboard" : urlView;
+  useEffect(() => {
+    if (blocked) goToView("dashboard", true);
+  }, [blocked]);
   const live = useLiveHome(session.status === "signedIn").data;
   const statusCounts = live?.statusCounts;
   const charts = useMemo(
@@ -274,13 +311,13 @@ export default function DashboardPage() {
 
   function openModule(key: ModuleKey) {
     if (key === "dashboard") {
-      setView("dashboard");
+      if (view !== "dashboard") goToView("dashboard");
       return;
     }
     if (opening || key === view) return;
     setOpening(key);
     setTimeout(() => {
-      setView(key);
+      goToView(key);
       setOpening(null);
     }, 900);
   }
