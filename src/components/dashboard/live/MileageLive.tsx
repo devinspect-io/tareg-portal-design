@@ -17,7 +17,8 @@ import { isDirectSrc } from "@/lib/api/files";
 import { useApi, useApiPage } from "@/lib/api/hooks";
 import { useCan } from "@/lib/api/session";
 import type { ApiDriver, ApiMileage, ApiVehicle } from "@/lib/api/types";
-import { fmtDate, fmtKm } from "@/lib/fleet-data";
+import { downloadCsv, fetchAllPages, type ExportColumn } from "@/lib/export";
+import { STATUS, fmtDate, fmtKm } from "@/lib/fleet-data";
 import { useT } from "@/lib/translations";
 
 const PAGE_SIZE = 20;
@@ -323,8 +324,9 @@ export default function MileageLive() {
   const [action, setAction] = useState<Action | null>(null);
   const [toast, setToast] = useState<string | null>(null);
 
+  const query = { status, vehicleId, driverId, from, to, search: q };
   const { items, total, loading, fetching, error, reload } = useApiPage(
-    () => api.page<ApiMileage>("/mileage", { status, vehicleId, driverId, from, to, search: q, page, pageSize: PAGE_SIZE }),
+    () => api.page<ApiMileage>("/mileage", { ...query, page, pageSize: PAGE_SIZE }),
     JSON.stringify([status, vehicleId, driverId, from, to, q, page]),
   );
 
@@ -367,12 +369,29 @@ export default function MileageLive() {
   const vehicleOptions = (vehicles.data?.items ?? []).map((v) => ({ value: v.id, label: `${v.plateNumber} - ${tx(v.make)} ${tx(v.model)}` }));
   const driverOptions = (drivers.data?.items ?? []).map((d) => ({ value: d.id, label: `${tx(d.name)} (${d.employeeNo})` }));
 
+  // Export: every reading for the current filters, dates as yyyy-mm-dd and km as plain numbers.
+  const exportColumns: ExportColumn<ApiMileage>[] = [
+    { header: { en: "Ref.", ar: "المرجع" }, value: (m) => m.ref },
+    { header: { en: "Date", ar: "التاريخ" }, value: (m) => m.date },
+    { header: { en: "Driver", ar: "السائق" }, value: (m) => (m.driver ? tx(m.driver.name) : "") },
+    { header: { en: "Employee no.", ar: "الرقم الوظيفي" }, value: (m) => m.driver?.employeeNo },
+    { header: { en: "Vehicle", ar: "المركبة" }, value: (m) => m.vehicle?.plateNumber },
+    { header: { en: "Previous (km)", ar: "السابقة (كم)" }, value: (m) => m.previous },
+    { header: { en: "New reading (km)", ar: "الجديدة (كم)" }, value: (m) => m.reading },
+    { header: { en: "Distance (km)", ar: "المسافة (كم)" }, value: (m) => m.distance },
+    { header: { en: "Photos", ar: "الصور" }, value: (m) => m.photos.length },
+    { header: { en: "Status", ar: "الحالة" }, value: (m) => tx(STATUS[m.status].label) },
+    { header: { en: "Rejection reason", ar: "سبب الرفض" }, value: (m) => m.rejectionReason },
+  ];
+  const onExport = async () => downloadCsv("kilometer-readings", tx, await fetchAllPages<ApiMileage>("/mileage", query), exportColumns);
+
   const c = counts.data;
   const num = (n: number | undefined) => (n === undefined ? "-" : n.toLocaleString("en-US"));
 
   return (
     <Page
       moduleKey="mileage"
+      onExport={onExport}
       subtitle={{ en: "Kilometer readings submitted by drivers from the mobile app, with photo evidence.", ar: "قراءات العداد المرسلة من السائقين عبر تطبيق الجوال مع صور الإثبات." }}
       stats={[
         { label: { en: "In review", ar: "قيد المراجعة" }, value: num(c?.inReview), tone: "warn", ...toggleCard(status, "inReview", filter(setStatus)) },

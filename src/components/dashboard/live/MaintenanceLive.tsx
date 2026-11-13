@@ -33,7 +33,8 @@ import { api } from "@/lib/api/client";
 import { useApi, useApiPage } from "@/lib/api/hooks";
 import { useCan } from "@/lib/api/session";
 import type { ApiMaintenance, ApiServiceDue, MaintenancePatch } from "@/lib/api/types";
-import { fmtDate, fmtKm, fmtSAR } from "@/lib/fleet-data";
+import { downloadCsv, fetchAllPages, type ExportColumn } from "@/lib/export";
+import { STATUS, fmtDate, fmtKm, fmtSAR } from "@/lib/fleet-data";
 import { useT } from "@/lib/translations";
 
 const PAGE_SIZE = 20;
@@ -228,10 +229,28 @@ export default function MaintenanceLive() {
   const [lightbox, setLightbox] = useState<{ ids: string[]; start: number } | null>(null);
   const [toast, setToast] = useState<string | null>(null);
 
+  const query = { status, emergency, vehicleId, driverId, from, to, search: q };
   const { items, total, loading, fetching, error, reload } = useApiPage(
-    () => api.page<ApiMaintenance>("/maintenance", { status, emergency, vehicleId, driverId, from, to, search: q, page, pageSize: PAGE_SIZE }),
+    () => api.page<ApiMaintenance>("/maintenance", { ...query, page, pageSize: PAGE_SIZE }),
     JSON.stringify([status, emergency, vehicleId, driverId, from, to, q, page]),
   );
+  // Export: the maintenance records for the current filters (not the service schedule), dates as yyyy-mm-dd and costs as plain numbers.
+  const exportColumns: ExportColumn<ApiMaintenance>[] = [
+    { header: { en: "Ref.", ar: "المرجع" }, value: (m) => m.ref },
+    { header: { en: "Date", ar: "التاريخ" }, value: (m) => m.date },
+    { header: { en: "Vehicle", ar: "المركبة" }, value: (m) => m.vehicle?.plateNumber },
+    { header: { en: "Driver", ar: "السائق" }, value: (m) => (m.driver ? tx(m.driver.name) : "") },
+    { header: { en: "Category", ar: "الفئة" }, value: (m) => tx(APPROVAL_TYPE_LABEL[m.category]) },
+    { header: { en: "Work done", ar: "العمل المنجز" }, value: (m) => m.description },
+    { header: { en: "Workshop / vendor", ar: "الورشة / المورد" }, value: (m) => m.vendor },
+    { header: { en: "Cost (SAR)", ar: "التكلفة (ر.س)" }, value: (m) => m.cost },
+    { header: { en: "Type", ar: "النوع" }, value: (m) => (m.emergency ? tx({ en: "Emergency", ar: "طارئة" }) : tx({ en: "Planned", ar: "مخططة" })) },
+    { header: { en: "Invoice files", ar: "ملفات الفاتورة" }, value: (m) => m.invoicePhotos.length },
+    { header: { en: "Status", ar: "الحالة" }, value: (m) => tx(STATUS[m.status].label) },
+    { header: { en: "Next service date", ar: "تاريخ الصيانة القادمة" }, value: (m) => m.nextServiceDate },
+    { header: { en: "Next service (km)", ar: "الصيانة القادمة (كم)" }, value: (m) => m.nextServiceKm },
+  ];
+  const onExport = async () => downloadCsv("maintenance", tx, await fetchAllPages<ApiMaintenance>("/maintenance", query), exportColumns);
   const schedule = useApi(() => api.get<ApiServiceDue[]>("/maintenance/schedule", { status: due, vehicleId }), `${due}|${vehicleId}`);
   // The schedule is not paged: the unfiltered list is the source of the due counts.
   const scheduleAll = useApi(() => api.get<ApiServiceDue[]>("/maintenance/schedule"), "all");
@@ -281,6 +300,7 @@ export default function MaintenanceLive() {
   return (
     <Page
       moduleKey="maintenance"
+      onExport={onExport}
       subtitle={{
         en: "Workshop records drivers submit against approved requests, with invoices and the next service per vehicle.",
         ar: "سجلات الورش التي يرسلها السائقون على الطلبات المعتمدة مع الفواتير وموعد الصيانة القادمة لكل مركبة.",

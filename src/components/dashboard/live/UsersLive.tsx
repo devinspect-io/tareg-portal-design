@@ -15,6 +15,7 @@ import { fieldErrors } from "@/lib/api/errors";
 import { useApi, useApiPage } from "@/lib/api/hooks";
 import { useCan, useSession } from "@/lib/api/session";
 import type { ApiDriver, ApiRole, ApiUser, PermissionCatalog } from "@/lib/api/types";
+import { downloadCsv, fetchAllPages, type ExportColumn } from "@/lib/export";
 import { fmtDate } from "@/lib/fleet-data";
 import { useT, type Bi } from "@/lib/translations";
 
@@ -147,6 +148,9 @@ export default function UsersLive() {
   const [usersTick, setUsersTick] = useState(0);
   // Lives here, not in the tab, so the stat cards can set it.
   const [userStatus, setUserStatus] = useState("");
+  // Also lifted so the page-level Export reads the same filters as the list.
+  const [userSearch, setUserSearch] = useState("");
+  const [userRoleId, setUserRoleId] = useState("");
   const showUsers = (status: string) => {
     setUserStatus(status);
     setTab("users");
@@ -189,6 +193,35 @@ export default function UsersLive() {
     ...(canRoles ? [{ key: "roles" as const, label: tx({ en: "Roles & permissions", ar: "الأدوار والصلاحيات" }) }] : []),
   ];
 
+  // Export: the Users tab (current filters) or the Roles tab, whichever is showing. Dates as yyyy-mm-dd.
+  const userColumns = (drivers: ApiDriver[]): ExportColumn<ApiUser>[] => [
+    { header: { en: "Name", ar: "الاسم" }, value: (u) => tx(u.name) },
+    { header: { en: "Email", ar: "البريد الإلكتروني" }, value: (u) => u.email },
+    { header: { en: "Phone", ar: "الجوال" }, value: (u) => u.phone },
+    { header: { en: "Role", ar: "الدور" }, value: (u) => { const r = roleList.find((x) => x.id === u.roleId); return r ? tx(r.name) : ""; } },
+    { header: { en: "Linked driver", ar: "السائق المرتبط" }, value: (u) => { const d = drivers.find((x) => x.id === u.driverId); return d ? `${tx(d.name)} (${d.employeeNo})` : ""; } },
+    { header: { en: "Last login", ar: "آخر دخول" }, value: (u) => u.lastLoginAt?.slice(0, 10) },
+    { header: { en: "Status", ar: "الحالة" }, value: (u) => (u.status === "active" ? tx({ en: "Active", ar: "نشط" }) : tx({ en: "Inactive", ar: "غير نشط" })) },
+  ];
+  const roleColumns: ExportColumn<ApiRole>[] = [
+    { header: { en: "Name", ar: "الاسم" }, value: (r) => tx(r.name) },
+    { header: { en: "Description", ar: "الوصف" }, value: (r) => tx(r.description) },
+    { header: { en: "Audience", ar: "الفئة" }, value: (r) => tx(AUDIENCE[r.audience]) },
+    { header: { en: "Built-in", ar: "أساسي" }, value: (r) => (r.system ? tx({ en: "Yes", ar: "نعم" }) : tx({ en: "No", ar: "لا" })) },
+    { header: { en: "Locked", ar: "مقفل" }, value: (r) => (r.locked ? tx({ en: "Yes", ar: "نعم" }) : tx({ en: "No", ar: "لا" })) },
+    { header: { en: "Users", ar: "المستخدمون" }, value: (r) => r.userCount ?? 0 },
+    { header: { en: "Permissions", ar: "الصلاحيات" }, value: (r) => r.permissions.join("; ") },
+  ];
+  const onExport = async () => {
+    if (tab === "roles") {
+      downloadCsv("roles", tx, await api.get<ApiRole[]>("/roles"), roleColumns);
+      return;
+    }
+    const query = { search: userSearch || undefined, roleId: userRoleId || undefined, status: userStatus || undefined, sort: "createdAt" };
+    const [items, drivers] = await Promise.all([fetchAllPages<ApiUser>("/users", query), fetchAllPages<ApiDriver>("/drivers").catch(() => [] as ApiDriver[])]);
+    downloadCsv("users", tx, items, userColumns(drivers));
+  };
+
   const primary: { label: Bi; run: () => void } | null =
     tab === "users" && can("users:manage")
       ? { label: { en: "Add user", ar: "إضافة مستخدم" }, run: () => setUserModal("new") }
@@ -200,6 +233,7 @@ export default function UsersLive() {
     <>
       <Page
         moduleKey="users"
+        onExport={tabs.length > 0 ? onExport : undefined}
         subtitle={{ en: "Who can sign in, and what each role can open. Drivers sign in through the mobile app.", ar: "من يمكنه تسجيل الدخول وما يمكن لكل دور فتحه. يسجل السائقون الدخول عبر تطبيق الجوال." }}
         stats={stats.length ? stats : undefined}
         primaryAction={primary?.label}
@@ -211,7 +245,7 @@ export default function UsersLive() {
           </Block>
         )}
         {tab === "users" ? (
-          <UsersTab roles={roleList} canRoles={canRoles} tick={usersTick} status={userStatus} onStatus={setUserStatus} onEdit={(u) => setUserModal(u)} />
+          <UsersTab roles={roleList} canRoles={canRoles} tick={usersTick} search={userSearch} onSearch={setUserSearch} roleId={userRoleId} onRoleId={setUserRoleId} status={userStatus} onStatus={setUserStatus} onEdit={(u) => setUserModal(u)} />
         ) : (
           <RolesTab roles={roles} catalog={catalog.data ?? []} onEdit={(r) => setRoleModal(r)} />
         )}
@@ -248,6 +282,10 @@ function UsersTab({
   roles,
   canRoles,
   tick,
+  search,
+  onSearch: setSearch,
+  roleId,
+  onRoleId: setRoleId,
   status,
   onStatus: setStatus,
   onEdit,
@@ -255,14 +293,16 @@ function UsersTab({
   roles: ApiRole[];
   canRoles: boolean;
   tick: number;
+  search: string;
+  onSearch: (v: string) => void;
+  roleId: string;
+  onRoleId: (v: string) => void;
   status: string;
   onStatus: (v: string) => void;
   onEdit: (u: ApiUser) => void;
 }) {
   const { tx, language } = useT();
   const can = useCan();
-  const [search, setSearch] = useState("");
-  const [roleId, setRoleId] = useState("");
   const [page, setPage] = useState(1);
   // A stat card can change the status from outside: start from page 1 again.
   const [seenStatus, setSeenStatus] = useState(status);

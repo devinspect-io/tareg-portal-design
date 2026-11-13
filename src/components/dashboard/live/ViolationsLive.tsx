@@ -15,7 +15,8 @@ import { api } from "@/lib/api/client";
 import { useApi, useApiPage } from "@/lib/api/hooks";
 import { useCan } from "@/lib/api/session";
 import type { ApiViolation } from "@/lib/api/types";
-import { fmtDate, fmtSAR } from "@/lib/fleet-data";
+import { downloadCsv, fetchAllPages, type ExportColumn } from "@/lib/export";
+import { STATUS, fmtDate, fmtSAR } from "@/lib/fleet-data";
 import { useT } from "@/lib/translations";
 
 const PAGE_SIZE = 20;
@@ -77,11 +78,27 @@ export default function ViolationsLive() {
   const [lightbox, setLightbox] = useState<{ ids: string[]; start: number } | null>(null);
   const [toast, setToast] = useState<string | null>(null);
 
+  const query = { status, vehicleId, driverId, from, to, search: q };
   const { items, total, loading, fetching, error, reload } = useApiPage(
-    () => api.page<ApiViolation>("/violations", { status, vehicleId, driverId, from, to, search: q, page, pageSize: PAGE_SIZE }),
+    () => api.page<ApiViolation>("/violations", { ...query, page, pageSize: PAGE_SIZE }),
     JSON.stringify([status, vehicleId, driverId, from, to, q, page]),
   );
   const { vehicleOptions, driverOptions } = useFleetOptions();
+
+  // Export: every violation for the current filters, dates as yyyy-mm-dd and fines as plain numbers.
+  const exportColumns: ExportColumn<ApiViolation>[] = [
+    { header: { en: "Ref.", ar: "المرجع" }, value: (v) => v.ref },
+    { header: { en: "Date", ar: "التاريخ" }, value: (v) => v.date },
+    { header: { en: "Violation", ar: "المخالفة" }, value: (v) => v.type },
+    { header: { en: "Driver", ar: "السائق" }, value: (v) => (v.driver ? tx(v.driver.name) : "") },
+    { header: { en: "Vehicle", ar: "المركبة" }, value: (v) => v.vehicle?.plateNumber },
+    { header: { en: "Location", ar: "الموقع" }, value: (v) => v.location },
+    { header: { en: "Fine (SAR)", ar: "الغرامة (ر.س)" }, value: (v) => v.fine },
+    { header: { en: "Ticket files", ar: "ملفات المخالفة" }, value: (v) => v.photos.length },
+    { header: { en: "Status", ar: "الحالة" }, value: (v) => tx(STATUS[v.status].label) },
+    { header: { en: "Paid on", ar: "تاريخ الدفع" }, value: (v) => v.paidAt?.slice(0, 10) },
+  ];
+  const onExport = async () => downloadCsv("violations", tx, await fetchAllPages<ApiViolation>("/violations", query), exportColumns);
   const counts = useApi(async () => {
     const one = (s: string) => api.page<ApiViolation>("/violations", { status: s, pageSize: 1 }).then((p) => p.total);
     const [unpaid, paid, all] = await Promise.all([one("unpaid"), one("paid"), one("")]);
@@ -108,6 +125,7 @@ export default function ViolationsLive() {
   return (
     <Page
       moduleKey="violations"
+      onExport={onExport}
       subtitle={{ en: "Traffic fines reported by drivers, recorded against the driver and vehicle.", ar: "المخالفات المرورية المبلغ عنها من السائقين والمسجلة على السائق والمركبة." }}
       stats={[
         { label: { en: "Unpaid fines", ar: "مخالفات غير مدفوعة" }, value: countText(c?.unpaid), tone: "bad", ...toggleCard(status, "unpaid", filter(setStatus)) },

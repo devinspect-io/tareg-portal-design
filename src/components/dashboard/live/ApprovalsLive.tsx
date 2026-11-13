@@ -31,7 +31,8 @@ import {
 import { api } from "@/lib/api/client";
 import { useApi, useApiPage } from "@/lib/api/hooks";
 import type { ApiApproval, ApprovalType } from "@/lib/api/types";
-import { fmtDate, fmtSAR, type ApprovalStep } from "@/lib/fleet-data";
+import { downloadCsv, fetchAllPages, type ExportColumn } from "@/lib/export";
+import { STATUS, fmtDate, fmtSAR, type ApprovalStep } from "@/lib/fleet-data";
 import { useT } from "@/lib/translations";
 
 const PAGE_SIZE = 20;
@@ -155,11 +156,27 @@ export default function ApprovalsLive() {
   const [action, setAction] = useState<Action | null>(null);
   const [toast, setToast] = useState<string | null>(null);
 
+  const query = { status, type, vehicleId, driverId, search: q };
   const { items, total, loading, fetching, error, reload } = useApiPage(
-    () => api.page<ApiApproval>("/approvals", { status, type, vehicleId, driverId, search: q, page, pageSize: PAGE_SIZE }),
+    () => api.page<ApiApproval>("/approvals", { ...query, page, pageSize: PAGE_SIZE }),
     JSON.stringify([status, type, vehicleId, driverId, q, page]),
   );
   const { vehicleOptions, driverOptions } = useFleetOptions();
+
+  // Export: every request for the current filters, dates as yyyy-mm-dd and the amount as a plain number.
+  const exportColumns: ExportColumn<ApiApproval>[] = [
+    { header: { en: "Ref.", ar: "المرجع" }, value: (a) => a.ref },
+    { header: { en: "Date", ar: "التاريخ" }, value: (a) => a.date },
+    { header: { en: "Request", ar: "الطلب" }, value: (a) => tx(APPROVAL_TYPE_LABEL[a.type]) },
+    { header: { en: "Note", ar: "الملاحظة" }, value: (a) => a.note },
+    { header: { en: "Driver", ar: "السائق" }, value: (a) => (a.driver ? tx(a.driver.name) : "") },
+    { header: { en: "Vehicle", ar: "المركبة" }, value: (a) => a.vehicle?.plateNumber },
+    { header: { en: "Amount (SAR)", ar: "المبلغ (ر.س)" }, value: (a) => a.amount },
+    { header: { en: "Photos", ar: "الصور" }, value: (a) => a.photos?.length ?? 0 },
+    { header: { en: "Status", ar: "الحالة" }, value: (a) => tx(STATUS[a.status].label) },
+    { header: { en: "Rejection reason", ar: "سبب الرفض" }, value: (a) => a.rejectionReason },
+  ];
+  const onExport = async () => downloadCsv("approvals", tx, await fetchAllPages<ApiApproval>("/approvals", query), exportColumns);
   const counts = useApi(async () => {
     const one = (s: string) => api.page<ApiApproval>("/approvals", { status: s, pageSize: 1 }).then((p) => p.total);
     const [assistant, fleet, approved, rejected] = await Promise.all([one("pendingAssistant"), one("pendingFleetManager"), one("approved"), one("rejected")]);
@@ -240,6 +257,7 @@ export default function ApprovalsLive() {
   return (
     <Page
       moduleKey="approvals"
+      onExport={onExport}
       subtitle={{ en: "Driver requests move through Driver → Assistant → Fleet Manager before work proceeds.", ar: "تمر طلبات السائقين عبر السائق ← المساعد ← مدير الأسطول قبل تنفيذ العمل." }}
       stats={[
         { label: { en: "With the Assistant", ar: "لدى المساعد" }, value: countText(c?.assistant), tone: "warn", ...toggleCard(status, "pendingAssistant", filter(setStatus)) },

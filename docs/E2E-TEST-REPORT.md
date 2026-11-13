@@ -1,7 +1,8 @@
 # Tareg portal: end-to-end test report
 
 **Date:** 11 Nov 2026  
-**Result:** 86 scenarios, 84 passed, 2 failed
+**Result:** 86 scenarios, 84 passed, 2 failed  
+**Follow-up:** 13 Nov 2026: both failures fixed in the portal (see [Follow-up](#follow-up-13-nov-2026))
 
 ## What was tested
 
@@ -19,16 +20,33 @@
 
 ## Failures
 
-| # | Scenario | What happens |
-|---|---|---|
-| 1 | Dashboard: 'Expired documents' card opens Compliance filtered to expired | Opens Compliance with no filter applied (25 of 52 rows shown). |
-| 2 | Export: button produces a file | Clicking Export does nothing on any screen: the button has no click handler (ModulePage.tsx:235). |
+| # | Scenario | What happens | Status (13 Nov) |
+|---|---|---|---|
+| 1 | Dashboard: 'Expired documents' card opens Compliance filtered to expired | Opens Compliance with no filter applied (25 of 52 rows shown). | Fixed |
+| 2 | Export: button produces a file | Clicking Export does nothing on any screen: the button has no click handler (ModulePage.tsx:235). | Fixed |
 
 ## Observations
 
 - **Handover odometer does not move the vehicle odometer.** An assignment ended at 1,750 km left the vehicle at 1,200 km, and the next driver's reading showed 1,200 km as "previous". The seeded assignments all start at 0 km. This matches the rule that only approved readings move the odometer; confirm it is intended.
 - **Seed photos return 404.** The seeded kilometer readings reference photo paths that do not exist in the files service. Photos uploaded during the run loaded correctly.
 - **Role deletion was not exercised.** No delete button was found on a role that is in use.
+
+## Follow-up: 13 Nov 2026
+
+Portal fixes made after this run, on branch `feat/v1` after commit `d474acf`, checked in Chrome against the local stack.
+
+### Fixed
+
+| # | Item | What changed | Checked |
+|---|---|---|---|
+| 1 | Dashboard cards open Compliance unfiltered | "Expired documents" opens Compliance filtered to expired, "Expiring in 30 days" to expiring soon, "Active drivers" opens Drivers filtered to active. The filter is passed in memory (`lib/open-filter.ts`), so the URL stays `?view=<screen>` and a refresh shows the screen unfiltered. | Expired card: 8 of 8 rows, all Expired (matches the card). Expiring card: 5 of 5, all Expiring soon. |
+| 2 | Export does nothing | Export now downloads a CSV of what the screen lists, with its current filters, across all pages (up to 2,000 rows), not just the page on screen. Headers and labels follow the portal language; dates are `yyyy-mm-dd` and money and km are plain numbers, so a spreadsheet can sort and sum them. The file opens in Excel with Arabic intact. File name: `tareg-<screen>-<date>.csv`. Screens without a list (Settings) and the mock screens (Fuel Benefits, Notifications) no longer show the button. History shows it once a vehicle or driver is picked. Users & Roles exports the tab that is open. | All 13 live list screens downloaded a file with the right rows (for example Vehicles 12, Compliance 52, Users 17). Compliance filtered to expired exported 8 rows. An Arabic export had Arabic headers and values. |
+
+### Observations, rechecked
+
+- **Role deletion:** now exercised. A custom role with no users shows Delete in its dialog. It asks "Delete this record?" before deleting, then shows "Role deleted" and the role leaves the list. A role still in use has no Delete button and says "Move this role's users to another role before deleting it."; the API refuses that case too (`409 ROLE_IN_USE`). Working as designed.
+- **`NEXT_PUBLIC_FILES_BASE_URL`:** `.env.example` documents it. Each person's `.env.local` is not committed, so set it to `http://localhost:4100` when running the files service locally.
+- **Handover odometer** and **seed photos 404**: backend and seed data, not the portal. Still open for the backend team to confirm.
 
 ## Not tested
 
@@ -89,7 +107,7 @@
 
 | Result | Scenario | Detail |
 |---|---|---|
-| **Fail** | 'Expired documents' card opens Compliance filtered to expired | Opens Compliance with no filter applied (25 of 52 rows shown). |
+| **Fail**, fixed 13 Nov | 'Expired documents' card opens Compliance filtered to expired | Opens Compliance with no filter applied (25 of 52 rows shown). |
 
 ### Roles
 
@@ -242,7 +260,7 @@
 
 | Result | Scenario | Detail |
 |---|---|---|
-| **Fail** | button produces a file | Clicking Export does nothing on any screen: the button has no click handler (ModulePage.tsx:235). |
+| **Fail**, fixed 13 Nov | button produces a file | Clicking Export does nothing on any screen: the button has no click handler (ModulePage.tsx:235). |
 
 ### Mobile width
 

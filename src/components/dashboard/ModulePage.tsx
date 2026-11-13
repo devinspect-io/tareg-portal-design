@@ -214,6 +214,7 @@ export function Page({
   children,
   primaryAction,
   onPrimaryAction,
+  onExport,
 }: {
   moduleKey: ModuleKey;
   subtitle: Bi;
@@ -222,8 +223,27 @@ export function Page({
   /** Label for the "add" button; omit for read-only screens. */
   primaryAction?: Bi;
   onPrimaryAction?: () => void;
+  /**
+   * Downloads what the screen lists, with its current filters (see lib/export.ts).
+   * Omit it and the Export button is not shown.
+   */
+  onExport?: () => Promise<void>;
 }) {
   const { t, tx } = useT();
+  const [exporting, setExporting] = useState(false);
+  const [exportFailed, setExportFailed] = useState(false);
+  const runExport = async () => {
+    if (!onExport || exporting) return;
+    setExporting(true);
+    setExportFailed(false);
+    try {
+      await onExport();
+    } catch {
+      setExportFailed(true);
+    } finally {
+      setExporting(false);
+    }
+  };
   return (
     <motion.div variants={container} initial="hidden" animate="visible" className="mx-auto max-w-7xl space-y-6">
       <motion.div variants={section} className="flex flex-wrap items-end justify-between gap-4">
@@ -232,9 +252,20 @@ export function Page({
           <p className="mt-1 text-sm text-neutral-500 dark:text-neutral-400">{tx(subtitle)}</p>
         </div>
         <div className="flex items-center gap-2">
-          <button className="rounded-lg border border-neutral-200 bg-white px-4 py-2 text-sm font-medium text-neutral-600 transition-colors hover:bg-neutral-100 dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-300 dark:hover:bg-neutral-700">
-            {t("export")}
-          </button>
+          {exportFailed && (
+            <span role="alert" className="text-xs font-medium text-red-600 dark:text-red-400">
+              {tx({ en: "Export failed. Try again.", ar: "تعذر التصدير. حاول مرة أخرى." })}
+            </span>
+          )}
+          {onExport && (
+            <button
+              onClick={runExport}
+              disabled={exporting}
+              className="rounded-lg border border-neutral-200 bg-white px-4 py-2 text-sm font-medium text-neutral-600 transition-colors hover:bg-neutral-100 disabled:cursor-wait disabled:opacity-60 dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-300 dark:hover:bg-neutral-700"
+            >
+              {exporting ? tx({ en: "Exporting…", ar: "جارٍ التصدير…" }) : t("export")}
+            </button>
+          )}
           {primaryAction && (
             <button onClick={onPrimaryAction} className="rounded-lg bg-prime-600 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-prime-500">
               + {tx(primaryAction)}

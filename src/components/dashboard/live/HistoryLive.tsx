@@ -20,11 +20,15 @@ import { APPROVAL_TYPE_LABEL, DOCUMENT_LABEL, DriverCell, Fact, LiveState, Pager
 import { api } from "@/lib/api/client";
 import { useApi } from "@/lib/api/hooks";
 import type { ApiDriver, ApiVehicle, DocStatus, HistoryEvent, HistoryResponse, HistoryType } from "@/lib/api/types";
+import { downloadCsv, type ExportColumn } from "@/lib/export";
 import { STATUS, fmtDate, fmtKm, fmtSAR, type StatusCode } from "@/lib/fleet-data";
 import { useT, type Bi } from "@/lib/translations";
 
 const PAGE_SIZE = 20;
 const OPTIONS_LIMIT = 100;
+/** An export reads up to 20 pages of 100 events (2,000 rows), like the other screens. */
+const EXPORT_PAGE = 100;
+const EXPORT_MAX_PAGES = 20;
 
 type Kind = "vehicle" | "driver";
 type Subject = ApiVehicle | ApiDriver;
@@ -374,7 +378,7 @@ function EventCard({ e, kind, onPhotos }: { e: HistoryEvent; kind: Kind; onPhoto
 // ---------- Screen ----------
 
 export default function HistoryLive() {
-  const { tx } = useT();
+  const { tx, language } = useT();
   const [kind, setKind] = useState<Kind>("vehicle");
   const [subjectId, setSubjectId] = useState("");
   const [pickerSearch, setPickerSearch] = useState("");
@@ -434,6 +438,63 @@ export default function HistoryLive() {
   };
   const filtered = Boolean(types.length || from || to);
 
+  // Export: one row per event of the chosen vehicle or driver, with the current type and date filters.
+  // The endpoint returns one subject with its events, so it is paged here rather than through fetchAllPages.
+  const money = (e: HistoryEvent) => {
+    switch (e.type) {
+      case "maintenance":
+        return e.detail.cost;
+      case "accident":
+        return e.detail.cost;
+      case "violation":
+        return e.detail.fine;
+      default:
+        return null;
+    }
+  };
+  const detailText = (e: HistoryEvent) => {
+    switch (e.type) {
+      case "maintenance":
+        return `${e.detail.vendor}: ${e.detail.description}`;
+      case "breakdown":
+        return `${e.detail.location}: ${e.detail.description}${e.detail.resolution ? ` (${e.detail.resolution})` : ""}`;
+      case "accident":
+        return `${e.detail.location}: ${e.detail.description}`;
+      case "violation":
+        return `${e.detail.violationType}, ${e.detail.location}`;
+      case "mileage":
+        return `${e.detail.previous} - ${e.detail.reading} km`;
+      case "assignment":
+        return e.detail.to ? `${e.detail.from} - ${e.detail.to}` : tx({ en: `Since ${e.detail.from}`, ar: `منذ ${e.detail.from}` });
+    }
+  };
+  const exportColumns: ExportColumn<HistoryEvent>[] = [
+    { header: { en: "Date", ar: "التاريخ" }, value: (e) => e.date },
+    { header: { en: "Type", ar: "النوع" }, value: (e) => tx(TYPE_LABEL[e.type]) },
+    { header: { en: "Event", ar: "الحدث" }, value: (e) => titleOf(e, tx, language) },
+    { header: { en: "Ref.", ar: "المرجع" }, value: (e) => e.ref },
+    { header: { en: "Status", ar: "الحالة" }, value: (e) => (e.status && e.status in STATUS ? tx(STATUS[e.status as StatusCode].label) : e.status) },
+    { header: { en: "Vehicle", ar: "المركبة" }, value: (e) => e.vehicle?.plateNumber },
+    { header: { en: "Driver", ar: "السائق" }, value: (e) => (e.driver ? tx(e.driver.name) : "") },
+    { header: { en: "Details", ar: "التفاصيل" }, value: detailText },
+    { header: { en: "Amount (SAR)", ar: "المبلغ (ر.س)" }, value: money },
+  ];
+  const onExport = async () => {
+    const events: HistoryEvent[] = [];
+    for (let p = 1; p <= EXPORT_MAX_PAGES; p++) {
+      const res = await api.getWithMeta<HistoryResponse<Subject>>(`/history/${kind === "vehicle" ? "vehicles" : "drivers"}/${encodeURIComponent(activeId)}`, {
+        types: typesParam,
+        from,
+        to,
+        page: p,
+        pageSize: EXPORT_PAGE,
+      });
+      events.push(...res.data.events);
+      if (events.length >= res.total || res.data.events.length === 0) break;
+    }
+    downloadCsv("history", tx, events, exportColumns);
+  };
+
   const res = history.data;
   const fresh = res?.kind === kind;
   const noSubjects = !options.loading && !options.error && options.data?.kind === kind && optionList.length === 0 && !q;
@@ -441,6 +502,7 @@ export default function HistoryLive() {
   return (
     <Page
       moduleKey="history"
+      onExport={activeId ? onExport : undefined}
       subtitle={{
         en: "The complete record of each vehicle or driver: maintenance, invoices, incidents, readings and assignments.",
         ar: "السجل الكامل لكل مركبة أو سائق: الصيانة والفواتير والحوادث والقراءات والإسنادات.",

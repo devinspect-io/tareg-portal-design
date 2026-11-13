@@ -19,6 +19,7 @@ import { useT, type Bi } from "@/lib/translations";
 import { restoreSession, signOut, useCan, useCanOpen, useSession } from "@/lib/api/session";
 import { api } from "@/lib/api/client";
 import { firstLoadsInFlight, subscribeFirstLoads, useApi } from "@/lib/api/hooks";
+import { setOpenFilter } from "@/lib/open-filter";
 import type { ApiApproval, ApiComplianceItem, ApiDashboardSummary, ApiMileage, ApiServiceDue, VehicleStatus } from "@/lib/api/types";
 import { APPROVAL_TYPE_LABEL, DOCUMENT_LABEL } from "@/components/dashboard/live/LiveKit";
 import type { Language } from "@/lib/useLanguage";
@@ -299,7 +300,8 @@ export default function DashboardPage() {
   const live = useHomeLists(signedIn).data;
   const charts = useMemo(() => buildChartOptions(theme === "dark", language, (b) => b[language], summary), [theme, language, summary]);
 
-  function openModule(key: ModuleKey) {
+  /** `filter` opens the screen already narrowed (read once by `useOpenFilter`), e.g. Compliance on expired. */
+  function openModule(key: ModuleKey, filter?: Record<string, string>) {
     if (key === "dashboard") {
       if (view !== "dashboard") goToView("dashboard");
       return;
@@ -308,6 +310,7 @@ export default function DashboardPage() {
     // Switch now: the screen mounts under the loader and starts loading, and
     // the loader lifts when those first calls are done.
     const mine = ++openSeq.current;
+    setOpenFilter(filter ?? null);
     goToView(key);
     setOpening(key);
     setOpenMinDone(false);
@@ -426,7 +429,7 @@ export default function DashboardPage() {
                 {/* KPI cards: each opens the module it summarises */}
                 <motion.div variants={section} className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
                   {show.vehicles && <StatCard value={summary?.vehicles?.total ?? 0} sub={tx({ en: "Total vehicles", ar: "إجمالي المركبات" })} onClick={() => openModule("vehicles")} />}
-                  {show.drivers && <StatCard value={summary?.drivers?.active ?? 0} sub={tx({ en: "Active drivers", ar: "السائقون النشطون" })} onClick={() => openModule("drivers")} />}
+                  {show.drivers && <StatCard value={summary?.drivers?.active ?? 0} sub={tx({ en: "Active drivers", ar: "السائقون النشطون" })} onClick={() => openModule("drivers", { status: "active" })} />}
                   {show.vehicles && (
                     <StatCard value={summary?.vehicles?.offRoad ?? 0} sub={tx({ en: "Vehicles off the road", ar: "مركبات خارج الخدمة" })} tone="warn" onClick={() => openModule("maintenance")} />
                   )}
@@ -437,10 +440,10 @@ export default function DashboardPage() {
                     <StatCard value={summary?.approvals?.pending ?? 0} sub={tx({ en: "Pending approvals", ar: "موافقات معلقة" })} tone="warn" onClick={() => openModule("approvals")} />
                   )}
                   {show.compliance && (
-                    <StatCard value={summary?.compliance?.expiringSoon ?? 0} sub={tx({ en: "Expiring in 30 days", ar: "تنتهي خلال 30 يومًا" })} tone="warn" onClick={() => openModule("compliance")} />
+                    <StatCard value={summary?.compliance?.expiringSoon ?? 0} sub={tx({ en: "Expiring in 30 days", ar: "تنتهي خلال 30 يومًا" })} tone="warn" onClick={() => openModule("compliance", { status: "expiringSoon" })} />
                   )}
                   {show.compliance && (
-                    <StatCard value={summary?.compliance?.expired ?? 0} sub={tx({ en: "Expired documents", ar: "وثائق منتهية" })} tone="bad" onClick={() => openModule("compliance")} />
+                    <StatCard value={summary?.compliance?.expired ?? 0} sub={tx({ en: "Expired documents", ar: "وثائق منتهية" })} tone="bad" onClick={() => openModule("compliance", { status: "expired" })} />
                   )}
                   {show.expenses && (
                     <StatCard

@@ -15,7 +15,8 @@ import { api } from "@/lib/api/client";
 import { useApi, useApiPage } from "@/lib/api/hooks";
 import { useCan } from "@/lib/api/session";
 import type { ApiBreakdown } from "@/lib/api/types";
-import { fmtDate } from "@/lib/fleet-data";
+import { downloadCsv, fetchAllPages, type ExportColumn } from "@/lib/export";
+import { STATUS, fmtDate } from "@/lib/fleet-data";
 import { useT } from "@/lib/translations";
 
 const PAGE_SIZE = 20;
@@ -103,11 +104,28 @@ export default function BreakdownsLive() {
   const [action, setAction] = useState<Action | null>(null);
   const [toast, setToast] = useState<string | null>(null);
 
+  const query = { status, major, vehicleId, driverId, from, to, search: q };
   const { items, total, loading, fetching, error, reload } = useApiPage(
-    () => api.page<ApiBreakdown>("/breakdowns", { status, major, vehicleId, driverId, from, to, search: q, page, pageSize: PAGE_SIZE }),
+    () => api.page<ApiBreakdown>("/breakdowns", { ...query, page, pageSize: PAGE_SIZE }),
     JSON.stringify([status, major, vehicleId, driverId, from, to, q, page]),
   );
   const { vehicleOptions, driverOptions } = useFleetOptions();
+
+  // Export: every breakdown for the current filters, dates as yyyy-mm-dd.
+  const exportColumns: ExportColumn<ApiBreakdown>[] = [
+    { header: { en: "Ref.", ar: "المرجع" }, value: (b) => b.ref },
+    { header: { en: "Date", ar: "التاريخ" }, value: (b) => b.date },
+    { header: { en: "Vehicle", ar: "المركبة" }, value: (b) => b.vehicle?.plateNumber },
+    { header: { en: "Driver", ar: "السائق" }, value: (b) => (b.driver ? tx(b.driver.name) : "") },
+    { header: { en: "Location", ar: "الموقع" }, value: (b) => b.location },
+    { header: { en: "Description", ar: "الوصف" }, value: (b) => b.description },
+    { header: { en: "Severity", ar: "الخطورة" }, value: (b) => (b.major ? tx({ en: "Major", ar: "كبير" }) : tx({ en: "Minor", ar: "بسيط" })) },
+    { header: { en: "Photos", ar: "الصور" }, value: (b) => b.photos.length },
+    { header: { en: "Status", ar: "الحالة" }, value: (b) => tx(STATUS[b.status].label) },
+    { header: { en: "Resolution", ar: "الحل" }, value: (b) => b.resolution },
+    { header: { en: "Closed on", ar: "تاريخ الإغلاق" }, value: (b) => b.closedAt?.slice(0, 10) },
+  ];
+  const onExport = async () => downloadCsv("breakdowns", tx, await fetchAllPages<ApiBreakdown>("/breakdowns", query), exportColumns);
   const counts = useApi(async () => {
     const one = (query: Record<string, string>) => api.page<ApiBreakdown>("/breakdowns", { ...query, pageSize: 1 }).then((p) => p.total);
     const [open, inProgress, closed, majorOpen] = await Promise.all([one({ status: "open" }), one({ status: "inProgress" }), one({ status: "closed" }), one({ major: "true" })]);
@@ -149,6 +167,7 @@ export default function BreakdownsLive() {
   return (
     <Page
       moduleKey="breakdowns"
+      onExport={onExport}
       subtitle={{ en: "Roadside breakdowns reported by drivers from the mobile app.", ar: "الأعطال على الطريق المبلغ عنها من السائقين عبر تطبيق الجوال." }}
       stats={[
         { label: { en: "Open", ar: "مفتوحة" }, value: countText(c?.open), tone: "bad", ...toggleCard(status, "open", filter(setStatus)) },

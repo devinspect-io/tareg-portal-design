@@ -15,8 +15,10 @@ import { fieldErrors } from "@/lib/api/errors";
 import { useApi, useApiPage } from "@/lib/api/hooks";
 import { useCan } from "@/lib/api/session";
 import type { ApiDriver, AssignmentBlocker, DriverInput, DriverStatus, Paged } from "@/lib/api/types";
-import { fmtDate, type StatusCode } from "@/lib/fleet-data";
+import { downloadCsv, fetchAllPages, type ExportColumn } from "@/lib/export";
+import { STATUS, fmtDate, type StatusCode } from "@/lib/fleet-data";
 import { useT, type Bi } from "@/lib/translations";
+import { useOpenFilter } from "@/lib/open-filter";
 
 const PAGE_SIZE = 20;
 
@@ -105,13 +107,14 @@ export default function DriversLive() {
 
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState("");
-  const [status, setStatus] = useState("");
+  const [status, setStatus] = useState(useOpenFilter("status", ["active", "onLeave", "inactive"]));
   const [idType, setIdType] = useState("");
   const [sort, setSort] = useState("");
   const q = useDebounced(search.trim(), 300);
 
+  const query = { search: q, status, idType, sort };
   const key = JSON.stringify({ page, q, status, idType, sort });
-  const list = useApiPage<ApiDriver>(() => api.page<ApiDriver>("/drivers", { page, pageSize: PAGE_SIZE, search: q, status, idType, sort }), key);
+  const list = useApiPage<ApiDriver>(() => api.page<ApiDriver>("/drivers", { page, pageSize: PAGE_SIZE, ...query }), key);
 
   // Stats: cheap counts via pageSize 1, plus an expired-documents count when the whole fleet fits one fetch.
   const stats = useApi(async () => {
@@ -303,6 +306,22 @@ export default function DriversLive() {
     };
   });
 
+  // Export: every driver for the current filters, dates as yyyy-mm-dd.
+  const exportColumns: ExportColumn<ApiDriver>[] = [
+    { header: { en: "Name", ar: "الاسم" }, value: (d) => tx(d.name) },
+    { header: { en: "Employee no.", ar: "الرقم الوظيفي" }, value: (d) => d.employeeNo },
+    { header: { en: "Phone", ar: "الجوال" }, value: (d) => d.phone },
+    { header: { en: "ID type", ar: "نوع الهوية" }, value: (d) => (d.idType === "national" ? tx({ en: "National ID", ar: "هوية وطنية" }) : tx({ en: "Iqama", ar: "إقامة" })) },
+    { header: { en: "ID / Iqama", ar: "الهوية / الإقامة" }, value: (d) => d.idNumber },
+    { header: { en: "Nationality", ar: "الجنسية" }, value: (d) => tx(d.nationality) },
+    { header: { en: "License expiry", ar: "انتهاء الرخصة" }, value: (d) => d.licenseExpiry },
+    { header: { en: "ID / Iqama expiry", ar: "انتهاء الهوية / الإقامة" }, value: (d) => d.idExpiry },
+    { header: { en: "Vehicle", ar: "المركبة" }, value: (d) => d.currentVehicle?.plateNumber },
+    { header: { en: "Status", ar: "الحالة" }, value: (d) => tx(STATUS[d.status].label) },
+    { header: { en: "Can't be assigned because", ar: "سبب منع الإسناد" }, value: (d) => d.assignmentBlockers.map((b) => tx(BLOCKER_TEXT[b])).join("، ") },
+  ];
+  const onExport = async () => downloadCsv("drivers", tx, await fetchAllPages<ApiDriver>("/drivers", query), exportColumns);
+
   const headers = [
     tx({ en: "Name", ar: "الاسم" }),
     tx({ en: "Phone", ar: "الجوال" }),
@@ -321,6 +340,7 @@ export default function DriversLive() {
     <>
       <Page
         moduleKey="drivers"
+        onExport={onExport}
         subtitle={{ en: "Driver profiles, identity documents, licenses and assigned vehicles.", ar: "ملفات السائقين ووثائق الهوية والرخص والمركبات المسندة." }}
         primaryAction={canManage ? { en: "Add driver", ar: "إضافة سائق" } : undefined}
         onPrimaryAction={canManage ? () => openModal("new") : undefined}

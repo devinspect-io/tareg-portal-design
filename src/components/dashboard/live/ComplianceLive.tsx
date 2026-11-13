@@ -13,8 +13,10 @@ import { DOCUMENT_LABEL, LiveState, Pager, Refreshing, countText, useDebounced }
 import { api } from "@/lib/api/client";
 import { useApi, useApiPage } from "@/lib/api/hooks";
 import type { ApiComplianceItem, ComplianceDocument } from "@/lib/api/types";
-import { fmtDate } from "@/lib/fleet-data";
+import { downloadCsv, fetchAllPages, type ExportColumn } from "@/lib/export";
+import { STATUS, fmtDate } from "@/lib/fleet-data";
 import { useT } from "@/lib/translations";
+import { useOpenFilter } from "@/lib/open-filter";
 
 const PAGE_SIZE = 25;
 
@@ -29,7 +31,7 @@ function DaysLeft({ days }: { days: number }) {
 export default function ComplianceLive() {
   const { tx, language } = useT();
 
-  const [status, setStatus] = useState("");
+  const [status, setStatus] = useState(useOpenFilter("status", ["expired", "expiringSoon", "valid"]));
   const [kind, setKind] = useState("");
   const [doc, setDoc] = useState("");
   const [withinDays, setWithinDays] = useState("");
@@ -37,8 +39,9 @@ export default function ComplianceLive() {
   const [page, setPage] = useState(1);
   const q = useDebounced(search.trim());
 
+  const query = { status, kind, document: doc, withinDays, search: q };
   const { items, total, loading, fetching, error, reload } = useApiPage(
-    () => api.page<ApiComplianceItem>("/compliance", { status, kind, document: doc, withinDays, search: q, page, pageSize: PAGE_SIZE }),
+    () => api.page<ApiComplianceItem>("/compliance", { ...query, page, pageSize: PAGE_SIZE }),
     JSON.stringify([status, kind, doc, withinDays, q, page]),
   );
   const counts = useApi(async () => {
@@ -65,12 +68,25 @@ export default function ComplianceLive() {
   // The reminder stages (30, 7, 3, 1 days) plus a longer look ahead.
   const withinOptions = [1, 3, 7, 30, 60, 90].map((d) => ({ value: String(d), label: tx({ en: `Expiring within ${d} days`, ar: `تنتهي خلال ${d} يوم` }) }));
 
+  // Export: every tracked document for the current filters, expiry as yyyy-mm-dd and days as a plain number (negative once expired).
+  const exportColumns: ExportColumn<ApiComplianceItem>[] = [
+    { header: { en: "Document", ar: "الوثيقة" }, value: (i) => tx(DOCUMENT_LABEL[i.document]) },
+    { header: { en: "Holder", ar: "صاحب الوثيقة" }, value: (i) => (i.subject.name ? tx(i.subject.name) : i.subject.plateNumber) },
+    { header: { en: "Type", ar: "النوع" }, value: (i) => (i.kind === "driver" ? tx({ en: "Driver", ar: "سائق" }) : tx({ en: "Vehicle", ar: "مركبة" })) },
+    { header: { en: "Expiry", ar: "تاريخ الانتهاء" }, value: (i) => i.expiry },
+    { header: { en: "Days remaining", ar: "الأيام المتبقية" }, value: (i) => i.daysLeft },
+    { header: { en: "Reminder (days)", ar: "التذكير (أيام)" }, value: (i) => i.reminderDay },
+    { header: { en: "Status", ar: "الحالة" }, value: (i) => tx(STATUS[i.status].label) },
+  ];
+  const onExport = async () => downloadCsv("compliance", tx, await fetchAllPages<ApiComplianceItem>("/compliance", query), exportColumns);
+
   const c = counts.data;
   const filtered = Boolean(status || kind || doc || withinDays || q);
 
   return (
     <Page
       moduleKey="compliance"
+      onExport={onExport}
       subtitle={{ en: "Licenses, IDs, Iqamas, registrations, insurance and inspections, with expiry reminders.", ar: "الرخص والهويات والإقامات والاستمارات والتأمين والفحص الدوري مع تذكيرات الانتهاء." }}
       stats={[
         { label: { en: "Expired", ar: "منتهية" }, value: countText(c?.expired), tone: "bad", ...toggleCard(status, "expired", filter(setStatus)) },

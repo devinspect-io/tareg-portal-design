@@ -17,7 +17,8 @@ import { APPROVAL_TYPE_LABEL, DriverCell, LiveState, Pager, Refreshing, VehicleC
 import { api } from "@/lib/api/client";
 import { useApi, useApiPage } from "@/lib/api/hooks";
 import type { ApiMaintenance } from "@/lib/api/types";
-import { fmtDate, fmtSAR } from "@/lib/fleet-data";
+import { STATUS, fmtDate, fmtSAR } from "@/lib/fleet-data";
+import { downloadCsv, fetchAllPages, type ExportColumn } from "@/lib/export";
 import { useT } from "@/lib/translations";
 
 const PAGE_SIZE = 20;
@@ -71,6 +72,23 @@ export default function ExpensesLive() {
 
   const { vehicleOptions, driverOptions } = useFleetOptions();
 
+  // Export: every invoice matching the current filters, dates as yyyy-mm-dd and
+  // amounts as plain numbers so a spreadsheet can sum and sort them.
+  const exportColumns: ExportColumn<ApiMaintenance>[] = [
+    { header: { en: "Ref.", ar: "المرجع" }, value: (m) => m.ref },
+    { header: { en: "Date", ar: "التاريخ" }, value: (m) => m.date },
+    { header: { en: "Category", ar: "الفئة" }, value: (m) => tx(APPROVAL_TYPE_LABEL[m.category]) },
+    { header: { en: "Emergency", ar: "طارئة" }, value: (m) => (m.emergency ? tx({ en: "Yes", ar: "نعم" }) : tx({ en: "No", ar: "لا" })) },
+    { header: { en: "Vehicle", ar: "المركبة" }, value: (m) => m.vehicle?.plateNumber },
+    { header: { en: "Driver", ar: "السائق" }, value: (m) => (m.driver ? tx(m.driver.name) : "") },
+    { header: { en: "Vendor", ar: "المورد" }, value: (m) => m.vendor },
+    { header: { en: "Work done", ar: "العمل المنجز" }, value: (m) => m.description },
+    { header: { en: "Amount (SAR)", ar: "المبلغ (ر.س)" }, value: (m) => m.cost },
+    { header: { en: "Invoice files", ar: "ملفات الفاتورة" }, value: (m) => m.invoicePhotos.length },
+    { header: { en: "Status", ar: "الحالة" }, value: (m) => tx(STATUS[m.status].label) },
+  ];
+  const onExport = async () => downloadCsv("expense-invoices", tx, await fetchAllPages<ApiMaintenance>("/maintenance", query), exportColumns);
+
   const shown = items;
   const filtered = Boolean(emergency || status || vehicleId || driverId || from || to || q);
   const t = totals.data;
@@ -93,6 +111,7 @@ export default function ExpensesLive() {
   return (
     <Page
       moduleKey="expenses"
+      onExport={onExport}
       subtitle={{
         en: "Workshop invoices from the maintenance records: vendor, cost, category and the attached invoice.",
         ar: "فواتير الورش من سجلات الصيانة: المورد والتكلفة والفئة والفاتورة المرفقة.",

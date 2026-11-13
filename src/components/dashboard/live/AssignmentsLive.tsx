@@ -13,6 +13,7 @@ import { ApiError, api } from "@/lib/api/client";
 import { useApiPage } from "@/lib/api/hooks";
 import { useCan } from "@/lib/api/session";
 import type { ApiAssignment, ApiDriver, ApiVehicle, AssignmentBlocker, VehicleSummary } from "@/lib/api/types";
+import { downloadCsv, fetchAllPages, type ExportColumn } from "@/lib/export";
 import { fmtDate, fmtKm, todayISO } from "@/lib/fleet-data";
 import { useT, type Bi } from "@/lib/translations";
 
@@ -45,8 +46,9 @@ export default function AssignmentsLive() {
   const [page, setPage] = useState(1);
   const q = useDebounced(search.trim());
 
+  const query = { current: current || undefined, vehicleId, driverId, search: q };
   const list = useApiPage(
-    () => api.page<ApiAssignment>("/assignments", { current: current || undefined, vehicleId, driverId, search: q, page, pageSize: PAGE_SIZE }),
+    () => api.page<ApiAssignment>("/assignments", { ...query, page, pageSize: PAGE_SIZE }),
     `${current}|${vehicleId}|${driverId}|${q}|${page}`,
   );
 
@@ -82,6 +84,22 @@ export default function AssignmentsLive() {
     setPage(1);
   };
 
+  // Export: the assignment history for the current filters, an open assignment has an empty "To".
+  const exportColumns: ExportColumn<ApiAssignment>[] = [
+    { header: { en: "Ref.", ar: "المرجع" }, value: (a) => a.ref },
+    { header: { en: "Vehicle", ar: "المركبة" }, value: (a) => a.vehicle?.plateNumber },
+    { header: { en: "Make / model", ar: "الشركة / الطراز" }, value: (a) => (a.vehicle ? `${tx(a.vehicle.make)} ${tx(a.vehicle.model)}` : "") },
+    { header: { en: "Driver", ar: "السائق" }, value: (a) => (a.driver ? tx(a.driver.name) : "") },
+    { header: { en: "Employee no.", ar: "الرقم الوظيفي" }, value: (a) => a.driver?.employeeNo },
+    { header: { en: "From", ar: "من" }, value: (a) => a.from },
+    { header: { en: "To", ar: "إلى" }, value: (a) => a.to },
+    { header: { en: "Current", ar: "حالي" }, value: (a) => (a.current ? tx({ en: "Yes", ar: "نعم" }) : tx({ en: "No", ar: "لا" })) },
+    { header: { en: "Start odometer (km)", ar: "عداد البداية (كم)" }, value: (a) => a.startOdometer },
+    { header: { en: "End odometer (km)", ar: "عداد النهاية (كم)" }, value: (a) => a.endOdometer },
+    { header: { en: "Distance (km)", ar: "المسافة (كم)" }, value: (a) => a.distance },
+  ];
+  const onExport = async () => downloadCsv("assignments", tx, await fetchAllPages<ApiAssignment>("/assignments", query), exportColumns);
+
   const headers = [
     tx({ en: "Ref.", ar: "المرجع" }),
     tx({ en: "Vehicle", ar: "المركبة" }),
@@ -97,6 +115,7 @@ export default function AssignmentsLive() {
   return (
     <Page
       moduleKey="assignments"
+      onExport={onExport}
       subtitle={{ en: "Which driver has which vehicle, with the full assignment history.", ar: "أي سائق يستخدم أي مركبة، مع سجل الإسناد الكامل." }}
       primaryAction={canManage ? { en: "Assign vehicle", ar: "إسناد مركبة" } : undefined}
       onPrimaryAction={() => setAssignOpen(true)}

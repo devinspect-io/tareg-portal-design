@@ -15,7 +15,8 @@ import { fieldErrors } from "@/lib/api/errors";
 import { useApi, useApiPage } from "@/lib/api/hooks";
 import { useCan } from "@/lib/api/session";
 import type { ApiVehicle, DocStatus, MoiStatus, RegistrationType, VehicleStatus } from "@/lib/api/types";
-import { fmtDate, fmtKm } from "@/lib/fleet-data";
+import { downloadCsv, fetchAllPages, type ExportColumn } from "@/lib/export";
+import { STATUS, fmtDate, fmtKm } from "@/lib/fleet-data";
 import { useT, type Bi } from "@/lib/translations";
 
 const PAGE_SIZE = 20;
@@ -257,8 +258,9 @@ export default function VehiclesLive() {
   const [sort, setSort] = useState("");
   const q = useDebounced(search, 300);
 
+  const query = { search: q, status, city, assigned, sort };
   const key = JSON.stringify({ page, q, status, city, assigned, sort });
-  const list = useApiPage(() => api.page<ApiVehicle>("/vehicles", { page, pageSize: PAGE_SIZE, search: q, status, city, assigned, sort }), key);
+  const list = useApiPage(() => api.page<ApiVehicle>("/vehicles", { page, pageSize: PAGE_SIZE, ...query }), key);
 
   const stats = useApi(async () => {
     const count = (query: Record<string, string>) => api.page<ApiVehicle>("/vehicles", { pageSize: 1, ...query }).then((r) => r.total);
@@ -415,10 +417,32 @@ export default function VehiclesLive() {
 
   const n = (v: number | undefined) => (v === undefined ? "-" : String(v));
 
+  // Export: the whole register for the current filters, dates as yyyy-mm-dd and the odometer as a plain number.
+  const docExpiry = (d: DocStatus) => d.expiry ?? "";
+  const docState = (d: DocStatus) => (d.status ? tx(STATUS[d.status].label) : "");
+  const exportColumns: ExportColumn<ApiVehicle>[] = [
+    { header: { en: "Plate", ar: "اللوحة" }, value: (v) => v.plateNumber },
+    { header: { en: "Make", ar: "الشركة" }, value: (v) => tx(v.make) },
+    { header: { en: "Model", ar: "الطراز" }, value: (v) => tx(v.model) },
+    { header: { en: "Year", ar: "السنة" }, value: (v) => v.manufactureYear },
+    { header: { en: "City", ar: "المدينة" }, value: (v) => tx(v.city) },
+    { header: { en: "Driver", ar: "السائق" }, value: (v) => (v.currentDriver ? tx(v.currentDriver.name) : "") },
+    { header: { en: "Odometer (km)", ar: "العداد (كم)" }, value: (v) => v.mileage },
+    { header: { en: "Registration expiry", ar: "انتهاء الاستمارة" }, value: (v) => docExpiry(v.documents.registration) },
+    { header: { en: "Registration status", ar: "حالة الاستمارة" }, value: (v) => docState(v.documents.registration) },
+    { header: { en: "Insurance expiry", ar: "انتهاء التأمين" }, value: (v) => docExpiry(v.documents.insurance) },
+    { header: { en: "Insurance status", ar: "حالة التأمين" }, value: (v) => docState(v.documents.insurance) },
+    { header: { en: "Inspection expiry", ar: "انتهاء الفحص" }, value: (v) => docExpiry(v.documents.inspection) },
+    { header: { en: "Inspection status", ar: "حالة الفحص" }, value: (v) => docState(v.documents.inspection) },
+    { header: { en: "Status", ar: "الحالة" }, value: (v) => tx(STATUS[v.status].label) },
+  ];
+  const onExport = async () => downloadCsv("vehicles", tx, await fetchAllPages<ApiVehicle>("/vehicles", query), exportColumns);
+
   return (
     <>
       <Page
         moduleKey="vehicles"
+        onExport={onExport}
         subtitle={{ en: "Every vehicle with its driver, mileage, status and documents.", ar: "جميع المركبات مع السائق وقراءة العداد والحالة والوثائق." }}
         primaryAction={canManage ? { en: "Add vehicle", ar: "إضافة مركبة" } : undefined}
         onPrimaryAction={openCreate}

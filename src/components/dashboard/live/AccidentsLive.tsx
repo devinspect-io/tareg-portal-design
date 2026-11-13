@@ -30,7 +30,8 @@ import { api } from "@/lib/api/client";
 import { useApi, useApiPage } from "@/lib/api/hooks";
 import { useCan } from "@/lib/api/session";
 import type { AccidentPatch, ApiAccident } from "@/lib/api/types";
-import { fmtDate, fmtSAR } from "@/lib/fleet-data";
+import { downloadCsv, fetchAllPages, type ExportColumn } from "@/lib/export";
+import { STATUS, fmtDate, fmtSAR } from "@/lib/fleet-data";
 import { useT } from "@/lib/translations";
 
 const PAGE_SIZE = 20;
@@ -199,11 +200,28 @@ export default function AccidentsLive() {
   const [action, setAction] = useState<Action | null>(null);
   const [toast, setToast] = useState<string | null>(null);
 
+  const query = { status, vehicleId, driverId, from, to, search: q };
   const { items, total, loading, fetching, error, reload } = useApiPage(
-    () => api.page<ApiAccident>("/accidents", { status, vehicleId, driverId, from, to, search: q, page, pageSize: PAGE_SIZE }),
+    () => api.page<ApiAccident>("/accidents", { ...query, page, pageSize: PAGE_SIZE }),
     JSON.stringify([status, vehicleId, driverId, from, to, q, page]),
   );
   const { vehicleOptions, driverOptions } = useFleetOptions();
+
+  // Export: every accident for the current filters, dates as yyyy-mm-dd and cost as a plain number.
+  const exportColumns: ExportColumn<ApiAccident>[] = [
+    { header: { en: "Ref.", ar: "المرجع" }, value: (a) => a.ref },
+    { header: { en: "Date", ar: "التاريخ" }, value: (a) => a.date },
+    { header: { en: "Vehicle", ar: "المركبة" }, value: (a) => a.vehicle?.plateNumber },
+    { header: { en: "Driver", ar: "السائق" }, value: (a) => (a.driver ? tx(a.driver.name) : "") },
+    { header: { en: "Location", ar: "الموقع" }, value: (a) => a.location },
+    { header: { en: "Description", ar: "الوصف" }, value: (a) => a.description },
+    { header: { en: "Photos", ar: "الصور" }, value: (a) => a.photos.length },
+    { header: { en: "Najm report", ar: "تقرير نجم" }, value: (a) => a.reference },
+    { header: { en: "Cost (SAR)", ar: "التكلفة (ر.س)" }, value: (a) => a.cost },
+    { header: { en: "Status", ar: "الحالة" }, value: (a) => tx(STATUS[a.status].label) },
+    { header: { en: "Notes", ar: "ملاحظات" }, value: (a) => a.notes },
+  ];
+  const onExport = async () => downloadCsv("accidents", tx, await fetchAllPages<ApiAccident>("/accidents", query), exportColumns);
   const counts = useApi(async () => {
     const one = (s: string) => api.page<ApiAccident>("/accidents", { status: s, pageSize: 1 }).then((p) => p.total);
     const [open, inProgress, closed, all] = await Promise.all([one("open"), one("inProgress"), one("closed"), one("")]);
@@ -238,6 +256,7 @@ export default function AccidentsLive() {
   return (
     <Page
       moduleKey="accidents"
+      onExport={onExport}
       subtitle={{ en: "Accidents reported by drivers, with location, Najm/police reference, costs and photos.", ar: "الحوادث المبلغ عنها من السائقين مع الموقع ومرجع نجم أو الشرطة والتكاليف والصور." }}
       stats={[
         { label: { en: "Open", ar: "مفتوحة" }, value: countText(c?.open), tone: "bad", ...toggleCard(status, "open", filter(setStatus)) },
