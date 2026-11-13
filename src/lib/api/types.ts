@@ -372,3 +372,30 @@ export type ApiSettings = {
 };
 
 export type SettingsPatch = Partial<Omit<ApiSettings, "notificationCategories">> & { notificationCategories?: Partial<Record<NotificationCategoryKey, boolean>> };
+
+// ---------- Dashboard ----------
+
+/**
+ * GET /dashboard/summary: the home counts and chart series in one request.
+ * A section is null when the role cannot open that screen. Months are "2026-11".
+ */
+export type ApiDashboardSummary = {
+  today: string;
+  vehicles: (Record<VehicleStatus, number> & { total: number; offRoad: number; unassigned: number }) | null;
+  drivers: (Record<DriverStatus, number> & { total: number }) | null;
+  breakdowns: { open: number; inProgress: number; unresolved: number } | null;
+  approvals: { pendingAssistant: number; pendingFleetManager: number; pending: number; approvedToClose: number } | null;
+  mileage: { inReview: number; kmByMonth: { month: string; km: number }[] } | null;
+  compliance: { expiringSoon: number; expired: number } | null;
+  maintenance: { inProgress: number; overdue: number; dueSoon: number } | null;
+  /** Maintenance record costs only, as on Expense Invoices. */
+  expenses: {
+    from: string;
+    to: string;
+    total: number;
+    count: number;
+    emergencyTotal: number;
+    byCategory: { category: ApprovalType; total: number; count: number }[];
+    byMonth: { month: string; planned: number; emergency: number }[];
+  } | null;
+};

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { useRouter } from "next/navigation";
 import { AnimatePresence, motion } from "framer-motion";
 import Sidebar, { NavIcon } from "@/components/dashboard/Sidebar";
@@ -18,25 +18,11 @@ import { useTheme } from "@/lib/useTheme";
 import { useT, type Bi } from "@/lib/translations";
 import { restoreSession, signOut, useCan, useCanOpen, useSession } from "@/lib/api/session";
 import { api } from "@/lib/api/client";
-import { useApi } from "@/lib/api/hooks";
-import type { ApiApproval, ApiComplianceItem, ApiMileage, ApiServiceDue } from "@/lib/api/types";
+import { firstLoadsInFlight, subscribeFirstLoads, useApi } from "@/lib/api/hooks";
+import type { ApiApproval, ApiComplianceItem, ApiDashboardSummary, ApiMileage, ApiServiceDue, VehicleStatus } from "@/lib/api/types";
 import { APPROVAL_TYPE_LABEL, DOCUMENT_LABEL } from "@/components/dashboard/live/LiveKit";
 import type { Language } from "@/lib/useLanguage";
-import {
-  EXPENSES,
-  EXPENSE_CATEGORIES,
-  MAINTENANCE_COST,
-  MODULE_LABELS,
-  MONTHLY_KM,
-  STATUS,
-  fmtDate,
-  fmtKm,
-  fmtSAR,
-  lastMonths,
-  type ExpenseCategory,
-  type ModuleKey,
-  type StatusCode,
-} from "@/lib/fleet-data";
+import { MODULE_LABELS, STATUS, fmtDate, fmtKm, fmtMonth, fmtSAR, type ModuleKey, type StatusCode } from "@/lib/fleet-data";
 
 // The open screen lives in the URL (/dashboard?view=settings) so a refresh or
 // a shared link lands on the same screen, and Back steps between screens.
@@ -66,6 +52,13 @@ function goToView(key: ModuleKey, replace = false) {
   window.dispatchEvent(new Event(VIEW_EVENT));
 }
 
+// The boot and "Opening <screen>" loaders stay up until the screen's first
+// API loads finish. MIN keeps a fast answer from flashing the loader; MAX lets
+// a slow or hung call fall back to the screen's own loading state.
+const BOOT_MIN_MS = 600;
+const OPEN_MIN_MS = 300;
+const LOADER_MAX_MS = 10_000;
+
 // Floating AI assistant (bottom-right) is hidden for now, not removed. Flip to bring it back.
 const SHOW_AI_ASSISTANT = false;
 // "Maintenance cost: scheduled vs emergency" chart is hidden for now, not removed.
@@ -73,11 +66,12 @@ const SHOW_MAINTENANCE_COST_CHART = false;
 
 // ---------- Chart configs ----------
 
-function buildChartOptions(dark: boolean, lang: Language, tx: (b: Bi) => string, statusCounts: Map<StatusCode, number>) {
-  const months = lastMonths(6, lang);
+const VEHICLE_STATUSES: VehicleStatus[] = ["active", "inMaintenance", "brokenDown", "inactive"];
 
-  const byCategory = new Map<ExpenseCategory, number>();
-  for (const e of EXPENSES) byCategory.set(e.category, (byCategory.get(e.category) ?? 0) + e.amount);
+function buildChartOptions(dark: boolean, lang: Language, tx: (b: Bi) => string, s: ApiDashboardSummary | undefined) {
+  const kmByMonth = s?.mileage?.kmByMonth ?? [];
+  const costByMonth = s?.expenses?.byMonth ?? [];
+  const vehicles = s?.vehicles;
 
   const STATUS_COLOR: Partial<Record<StatusCode, string>> = {
     active: "#16a34a",
@@ -95,11 +89,15 @@ function buildChartOptions(dark: boolean, lang: Language, tx: (b: Bi) => string,
     mileage: primeChartOptions(
       {
         chart: { type: "areaspline", height: 250 },
-        xAxis: { categories: months },
+        xAxis: { categories: kmByMonth.map((m) => fmtMonth(m.month, lang)) },
+        // Distance is never negative; without a floor the spline dips under 0 next to a peak.
+        yAxis: { min: 0 },
         legend: { enabled: false },
         plotOptions: { areaspline: { fillOpacity: 0.12 } },
         tooltip: { pointFormat: `<b>{point.y:,.0f} ${lang === "ar" ? "كم" : "km"}</b>` },
-        series: [{ type: "areaspline", name: tx({ en: "Kilometers", ar: "الكيلومترات" }), data: MONTHLY_KM, color: PRIME_BLUE, marker: { enabled: true, radius: 4 } }],
+        series: [
+          { type: "areaspline", name: tx({ en: "Kilometers", ar: "الكيلومترات" }), data: kmByMonth.map((m) => m.km), color: PRIME_BLUE, marker: { enabled: true, radius: 4 } },
+        ],
       },
       dark,
     ),
@@ -115,7 +113,7 @@ function buildChartOptions(dark: boolean, lang: Language, tx: (b: Bi) => string,
             innerSize: "60%",
             dataLabels: { enabled: false },
             showInLegend: true,
-            data: [...byCategory.entries()].map(([cat, y], i) => ({ name: tx(EXPENSE_CATEGORIES[cat]), y, color: CHART_COLORS[i % CHART_COLORS.length] })),
+            data: (s?.expenses?.byCategory ?? []).map((c, i) => ({ name: tx(APPROVAL_TYPE_LABEL[c.category]), y: c.total, color: CHART_COLORS[i % CHART_COLORS.length] })),
           },
         ],
       },
@@ -132,7 +130,7 @@ function buildChartOptions(dark: boolean, lang: Language, tx: (b: Bi) => string,
             innerSize: "60%",
             dataLabels: { enabled: false },
             showInLegend: true,
-            data: [...statusCounts.entries()].map(([code, y]) => ({ name: tx(STATUS[code].label), y, color: STATUS_COLOR[code] ?? PRIME_BLUE })),
+            data: vehicles ? VEHICLE_STATUSES.map((code) => ({ name: tx(STATUS[code].label), y: vehicles[code], color: STATUS_COLOR[code] ?? PRIME_BLUE })) : [],
           },
         ],
       },
@@ -141,12 +139,12 @@ function buildChartOptions(dark: boolean, lang: Language, tx: (b: Bi) => string,
     maintenance: primeChartOptions(
       {
         chart: { type: "column", height: 250 },
-        xAxis: { categories: months },
+        xAxis: { categories: costByMonth.map((m) => fmtMonth(m.month, lang)) },
         plotOptions: { column: { borderRadius: 3, stacking: "normal" } },
         tooltip: { pointFormat: `{series.name}: <b>{point.y:,.0f} ${lang === "ar" ? "ر.س" : "SAR"}</b>` },
         series: [
-          { type: "column", name: tx({ en: "Scheduled", ar: "مجدولة" }), data: MAINTENANCE_COST.scheduled, color: PRIME_BLUE },
-          { type: "column", name: tx({ en: "Emergency", ar: "طارئة" }), data: MAINTENANCE_COST.emergency, color: ACCENT_ORANGE },
+          { type: "column", name: tx({ en: "Scheduled", ar: "مجدولة" }), data: costByMonth.map((m) => m.planned), color: PRIME_BLUE },
+          { type: "column", name: tx({ en: "Emergency", ar: "طارئة" }), data: costByMonth.map((m) => m.emergency), color: ACCENT_ORANGE },
         ],
       },
       dark,
@@ -182,86 +180,64 @@ function ViewAll({ onClick }: { onClick: () => void }) {
 
 // ---------- Live figures ----------
 
-/** Pageless counts: ask for one row and read the total. */
-const count = (path: string, query: Record<string, string> = {}) => api.page(path, { ...query, pageSize: 1 }).then((p) => p.total);
-
 /** First rows of a list. */
 const firstRows = <T,>(path: string, query: Record<string, string | number> = {}) =>
   api.page<T>(path, { ...query, page: 1 }).then((p) => p.items);
 
+/** The expense period the date filter applies (empty means the server's last 30 days). */
+type Period = { from: string; to: string };
+
 /**
- * The home figures the backend can answer. Each part is fetched only when the
- * role can see that module. List filters take one status each, so "pending"
- * and "open" figures add two counts. Fleet expenses, the expenses chart and
- * the km chart have no API yet and stay mock (tagged on screen).
+ * Every home count and chart series: GET /dashboard/summary. A section is null
+ * when the role cannot open that screen. Only the expense figures follow the
+ * date filter; the counts are always "right now".
  */
-function useLiveHome(enabled: boolean) {
+function useHomeSummary(enabled: boolean, period: Period) {
+  return useApi(
+    () => (enabled ? api.get<ApiDashboardSummary>("/dashboard/summary", { ...(period.from && { from: period.from }), ...(period.to && { to: period.to }) }) : Promise.resolve(undefined)),
+    `${enabled}|${period.from}|${period.to}`,
+  );
+}
+
+/**
+ * The home lists come from the screens' own endpoints (the summary carries
+ * counts only). Each is fetched only when the role can see that module.
+ */
+function useHomeLists(enabled: boolean) {
   const can = useCan();
-  const vehicles = enabled && can("vehicles:view");
-  const drivers = enabled && can("drivers:view");
   const mileage = enabled && can("mileage:view");
-  const breakdowns = enabled && can("breakdowns:view");
   const approvals = enabled && can("approvals:view");
   const compliance = enabled && can("compliance:view");
   const maintenance = enabled && can("maintenance:view");
   return useApi(async () => {
     const none = Promise.resolve(null);
-    const [
-      [total, active, maint, broken, inactive],
-      drv,
-      [open, inProgress],
-      [atAssistant, atManager, waitAssistant, waitManager],
-      [expiring, expired, expiries],
-      schedule,
-      recent,
-    ] = await Promise.all([
-      vehicles
-        ? Promise.all([count("/vehicles"), count("/vehicles", { status: "active" }), count("/vehicles", { status: "inMaintenance" }), count("/vehicles", { status: "brokenDown" }), count("/vehicles", { status: "inactive" })])
-        : [null, null, null, null, null],
-      drivers ? count("/drivers", { status: "active" }) : none,
-      breakdowns ? Promise.all([count("/breakdowns", { status: "open" }), count("/breakdowns", { status: "inProgress" })]) : [null, null],
+    const [waiting, expiries, schedule, recent] = await Promise.all([
       approvals
         ? Promise.all([
-            count("/approvals", { status: "pendingAssistant" }),
-            count("/approvals", { status: "pendingFleetManager" }),
             firstRows<ApiApproval>("/approvals", { status: "pendingAssistant", pageSize: 6, sort: "createdAt" }),
             firstRows<ApiApproval>("/approvals", { status: "pendingFleetManager", pageSize: 6, sort: "createdAt" }),
           ])
-        : [null, null, null, null],
-      compliance
-        ? Promise.all([
-            count("/compliance", { status: "expiringSoon" }),
-            count("/compliance", { status: "expired" }),
-            // Expired and expiring within 30 days, soonest expiry first.
-            firstRows<ApiComplianceItem>("/compliance", { withinDays: 30, pageSize: 6 }),
-          ])
-        : [null, null, null],
+        : none,
+      // Expired and expiring within 30 days, soonest expiry first.
+      compliance ? firstRows<ApiComplianceItem>("/compliance", { withinDays: 30, pageSize: 6 }) : none,
       maintenance ? api.get<ApiServiceDue[]>("/maintenance/schedule") : none,
       mileage ? firstRows<ApiMileage>("/mileage", { pageSize: 5, sort: "-date" }) : none,
     ]);
-    const sum = (a: number | null, b: number | null) => (a === null || b === null ? null : a + b);
-    const statusCounts = new Map<StatusCode, number>();
-    if (active !== null) statusCounts.set("active", active);
-    if (maint !== null) statusCounts.set("inMaintenance", maint);
-    if (broken !== null) statusCounts.set("brokenDown", broken);
-    if (inactive !== null) statusCounts.set("inactive", inactive);
     return {
-      total,
-      active: drv,
-      offRoad: sum(maint, broken),
-      openBreakdowns: sum(open, inProgress),
-      pendingApprovals: sum(atAssistant, atManager),
       // Oldest first: the request waiting longest leads.
-      pending: waitAssistant && waitManager ? [...waitAssistant, ...waitManager].sort((a, b) => a.createdAt.localeCompare(b.createdAt)).slice(0, 6) : [],
-      expiring,
-      expired,
+      pending: waiting ? waiting.flat().sort((a, b) => a.createdAt.localeCompare(b.createdAt)).slice(0, 6) : [],
       expiries: expiries ?? [],
       // The server orders overdue, then due soon, then scheduled.
       upcoming: (schedule ?? []).filter((d) => d.status !== "scheduled").slice(0, 5),
-      statusCounts,
-      recent,
+      recent: recent ?? [],
     };
-  }, `${vehicles}${drivers}${mileage}${breakdowns}${approvals}${compliance}${maintenance}`);
+  }, `${mileage}${approvals}${compliance}${maintenance}`);
+}
+
+/** Today in the browser's calendar, "yyyy-mm-dd". */
+function todayLocal() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
 
 // ---------- Page ----------
@@ -271,19 +247,31 @@ export default function DashboardPage() {
   const { theme } = useTheme();
   const { t, tx, language } = useT();
   const session = useSession();
-  const [booting, setBooting] = useState(true);
+  const [bootMinDone, setBootMinDone] = useState(false);
+  const [bootGaveUp, setBootGaveUp] = useState(false);
+  const [booted, setBooted] = useState(false);
+  const firstLoads = useSyncExternalStore(subscribeFirstLoads, firstLoadsInFlight, () => 0);
   const [mobileOpen, setMobileOpen] = useState(false);
   // The server render has no URL, so it starts on the dashboard; the boot
   // loader covers the switch, so the dashboard never flashes first.
   const urlView = useSyncExternalStore(subscribeView, viewFromUrl, () => "dashboard" as ModuleKey);
   const [opening, setOpening] = useState<ModuleKey | null>(null);
+  const [openMinDone, setOpenMinDone] = useState(false);
+  const [openGaveUp, setOpenGaveUp] = useState(false);
+  const openSeq = useRef(0);
   const [filterFrom, setFilterFrom] = useState("");
   const [filterTo, setFilterTo] = useState("");
+  const [period, setPeriod] = useState<Period>({ from: "", to: "" });
   const canOpen = useCanOpen();
+  const can = useCan();
 
   useEffect(() => {
-    const timer = setTimeout(() => setBooting(false), 1100);
-    return () => clearTimeout(timer);
+    const min = setTimeout(() => setBootMinDone(true), BOOT_MIN_MS);
+    const max = setTimeout(() => setBootGaveUp(true), LOADER_MAX_MS);
+    return () => {
+      clearTimeout(min);
+      clearTimeout(max);
+    };
   }, []);
 
   // Guard: no valid session means back to the sign-in page (also fires when
@@ -294,7 +282,12 @@ export default function DashboardPage() {
   useEffect(() => {
     if (session.status === "signedOut") router.replace("/login");
   }, [session.status, router]);
-  const ready = !booting && session.status === "signedIn";
+  const signedIn = session.status === "signedIn";
+  // Boot ends once, when the first screen's data is in; later loads never
+  // bring the boot loader back.
+  if (!booted && signedIn && bootMinDone && (firstLoads === 0 || bootGaveUp)) setBooted(true);
+  const ready = booted;
+  const openingVisible = opening !== null && !openGaveUp && (!openMinDone || firstLoads > 0);
 
   // A URL naming a screen this role can't open falls back to the dashboard.
   const blocked = session.status === "signedIn" && urlView !== "dashboard" && !canOpen(urlView);
@@ -302,30 +295,61 @@ export default function DashboardPage() {
   useEffect(() => {
     if (blocked) goToView("dashboard", true);
   }, [blocked]);
-  const live = useLiveHome(session.status === "signedIn").data;
-  const statusCounts = live?.statusCounts;
-  const charts = useMemo(
-    () => buildChartOptions(theme === "dark", language, (b) => b[language], statusCounts ?? new Map()),
-    [theme, language, statusCounts],
-  );
+  const summary = useHomeSummary(signedIn, period).data;
+  const live = useHomeLists(signedIn).data;
+  const charts = useMemo(() => buildChartOptions(theme === "dark", language, (b) => b[language], summary), [theme, language, summary]);
 
   function openModule(key: ModuleKey) {
     if (key === "dashboard") {
       if (view !== "dashboard") goToView("dashboard");
       return;
     }
-    if (opening || key === view) return;
+    if (openingVisible || key === view) return;
+    // Switch now: the screen mounts under the loader and starts loading, and
+    // the loader lifts when those first calls are done.
+    const mine = ++openSeq.current;
+    goToView(key);
     setOpening(key);
-    setTimeout(() => {
-      goToView(key);
-      setOpening(null);
-    }, 900);
+    setOpenMinDone(false);
+    setOpenGaveUp(false);
+    setTimeout(() => mine === openSeq.current && setOpenMinDone(true), OPEN_MIN_MS);
+    setTimeout(() => mine === openSeq.current && setOpenGaveUp(true), LOADER_MAX_MS);
   }
 
   // ---------- Derived dashboard figures ----------
-  const spend = EXPENSES.reduce((s, e) => s + e.amount, 0);
   const sarSuffix = language === "ar" ? " ر.س" : "";
   const sarPrefix = language === "ar" ? "" : "SAR ";
+  // A card or chart shows only when the role can open its screen (the server
+  // sends that section as null otherwise).
+  const show = {
+    vehicles: can("vehicles:view"),
+    drivers: can("drivers:view"),
+    breakdowns: can("breakdowns:view"),
+    approvals: can("approvals:view"),
+    compliance: can("compliance:view"),
+    mileage: can("mileage:view"),
+    expenses: canOpen("expenses"),
+  };
+  const chartCount = [show.mileage, show.expenses, show.vehicles].filter(Boolean).length + (SHOW_MAINTENANCE_COST_CHART && show.expenses ? 1 : 0);
+  const chartCols = chartCount >= 4 ? "lg:grid-cols-2" : chartCount === 3 ? "lg:grid-cols-3" : chartCount === 2 ? "lg:grid-cols-2" : "";
+
+  // The date filter sets the expense period. A start after the end (or after
+  // today, with no end) is refused by the server, so it is caught here first.
+  const rangeInvalid = !!filterFrom && filterFrom > (filterTo || todayLocal());
+  const periodApplied = !!(period.from || period.to);
+  const expensePeriod = summary?.expenses
+    ? periodApplied
+      ? `${fmtDate(summary.expenses.from, language)} - ${fmtDate(summary.expenses.to, language)}`
+      : tx({ en: "last 30 days", ar: "آخر 30 يومًا" })
+    : "";
+  const applyFilter = () => {
+    if (!rangeInvalid) setPeriod({ from: filterFrom, to: filterTo });
+  };
+  const clearFilter = () => {
+    setFilterFrom("");
+    setFilterTo("");
+    setPeriod({ from: "", to: "" });
+  };
 
   const plate = (p: string | null | undefined) => <span dir="ltr">{p ?? "-"}</span>;
   const status = (code: StatusCode) => <Badge label={tx(STATUS[code].label)} tone={STATUS[code].tone} />;
@@ -347,7 +371,7 @@ export default function DashboardPage() {
         <Topbar onToggleMobileSidebar={() => setMobileOpen((o) => !o)} onNavigate={openModule} />
 
         <main className="flex-1 px-4 py-6 sm:px-6">
-          {!ready ? null : view === "ai-reporting" ? (
+          {!signedIn ? null : view === "ai-reporting" ? (
             <AiReportingView />
           ) : view !== "dashboard" ? (
             <FleetModule key={view} moduleKey={view} onNavigate={openModule} />
@@ -365,38 +389,69 @@ export default function DashboardPage() {
                       {tx({ en: "Vehicles, drivers, compliance and approvals at a glance.", ar: "المركبات والسائقون والامتثال والموافقات في لمحة واحدة." })}
                     </p>
                   </div>
-                  <div className="flex flex-wrap items-center gap-2">
-                    <div className="w-40">
-                      <DatePicker value={filterFrom} onChange={setFilterFrom} />
+                  {show.expenses && (
+                    <div className="flex flex-col items-end gap-1.5">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <div className="w-40">
+                          <DatePicker value={filterFrom} onChange={setFilterFrom} />
+                        </div>
+                        <div className="w-40">
+                          <DatePicker value={filterTo} onChange={setFilterTo} />
+                        </div>
+                        <button
+                          onClick={applyFilter}
+                          disabled={rangeInvalid}
+                          className="rounded-lg bg-prime-600 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-prime-500 disabled:cursor-not-allowed disabled:opacity-50"
+                        >
+                          {t("filter")}
+                        </button>
+                        <button
+                          onClick={clearFilter}
+                          className="rounded-lg border border-neutral-200 bg-white px-4 py-2 text-sm font-medium text-neutral-600 transition-colors hover:bg-neutral-100 dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-300 dark:hover:bg-neutral-700"
+                        >
+                          {t("clear")}
+                        </button>
+                      </div>
+                      <p className={`text-xs ${rangeInvalid ? "font-medium text-red-600 dark:text-red-400" : "text-neutral-500 dark:text-neutral-400"}`}>
+                        {rangeInvalid
+                          ? filterTo
+                            ? tx({ en: "The start date must be on or before the end date.", ar: "يجب أن يكون تاريخ البداية في تاريخ النهاية أو قبله." })
+                            : tx({ en: "The start date can't be after today.", ar: "لا يمكن أن يكون تاريخ البداية بعد اليوم." })
+                          : tx({ en: "The dates set the period for the expense figures.", ar: "تحدد التواريخ فترة أرقام المصروفات." })}
+                      </p>
                     </div>
-                    <div className="w-40">
-                      <DatePicker value={filterTo} onChange={setFilterTo} />
-                    </div>
-                    <button className="rounded-lg bg-prime-600 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-prime-500">
-                      {t("filter")}
-                    </button>
-                    <button
-                      onClick={() => {
-                        setFilterFrom("");
-                        setFilterTo("");
-                      }}
-                      className="rounded-lg border border-neutral-200 bg-white px-4 py-2 text-sm font-medium text-neutral-600 transition-colors hover:bg-neutral-100 dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-300 dark:hover:bg-neutral-700"
-                    >
-                      {t("clear")}
-                    </button>
-                  </div>
+                  )}
                 </motion.div>
 
                 {/* KPI cards: each opens the module it summarises */}
                 <motion.div variants={section} className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-                  <StatCard value={live?.total ?? 0} sub={tx({ en: "Total vehicles", ar: "إجمالي المركبات" })} onClick={() => openModule("vehicles")} />
-                  <StatCard value={live?.active ?? 0} sub={tx({ en: "Active drivers", ar: "السائقون النشطون" })} onClick={() => openModule("drivers")} />
-                  <StatCard value={live?.offRoad ?? 0} sub={tx({ en: "Vehicles off the road", ar: "مركبات خارج الخدمة" })} tone="warn" onClick={() => openModule("maintenance")} />
-                  <StatCard value={live?.openBreakdowns ?? 0} sub={tx({ en: "Open breakdowns", ar: "أعطال مفتوحة" })} tone="bad" onClick={() => openModule("breakdowns")} />
-                  <StatCard value={live?.pendingApprovals ?? 0} sub={tx({ en: "Pending approvals", ar: "موافقات معلقة" })} tone="warn" onClick={() => openModule("approvals")} />
-                  <StatCard value={live?.expiring ?? 0} sub={tx({ en: "Expiring in 30 days", ar: "تنتهي خلال 30 يومًا" })} tone="warn" onClick={() => openModule("compliance")} />
-                  <StatCard value={live?.expired ?? 0} sub={tx({ en: "Expired documents", ar: "وثائق منتهية" })} tone="bad" onClick={() => openModule("compliance")} />
-                  <StatCard mock value={spend} prefix={sarPrefix} suffix={sarSuffix} sub={tx({ en: "Fleet expenses (30 days)", ar: "مصروفات الأسطول (30 يومًا)" })} onClick={() => openModule("expenses")} />
+                  {show.vehicles && <StatCard value={summary?.vehicles?.total ?? 0} sub={tx({ en: "Total vehicles", ar: "إجمالي المركبات" })} onClick={() => openModule("vehicles")} />}
+                  {show.drivers && <StatCard value={summary?.drivers?.active ?? 0} sub={tx({ en: "Active drivers", ar: "السائقون النشطون" })} onClick={() => openModule("drivers")} />}
+                  {show.vehicles && (
+                    <StatCard value={summary?.vehicles?.offRoad ?? 0} sub={tx({ en: "Vehicles off the road", ar: "مركبات خارج الخدمة" })} tone="warn" onClick={() => openModule("maintenance")} />
+                  )}
+                  {show.breakdowns && (
+                    <StatCard value={summary?.breakdowns?.unresolved ?? 0} sub={tx({ en: "Open breakdowns", ar: "أعطال مفتوحة" })} tone="bad" onClick={() => openModule("breakdowns")} />
+                  )}
+                  {show.approvals && (
+                    <StatCard value={summary?.approvals?.pending ?? 0} sub={tx({ en: "Pending approvals", ar: "موافقات معلقة" })} tone="warn" onClick={() => openModule("approvals")} />
+                  )}
+                  {show.compliance && (
+                    <StatCard value={summary?.compliance?.expiringSoon ?? 0} sub={tx({ en: "Expiring in 30 days", ar: "تنتهي خلال 30 يومًا" })} tone="warn" onClick={() => openModule("compliance")} />
+                  )}
+                  {show.compliance && (
+                    <StatCard value={summary?.compliance?.expired ?? 0} sub={tx({ en: "Expired documents", ar: "وثائق منتهية" })} tone="bad" onClick={() => openModule("compliance")} />
+                  )}
+                  {show.expenses && (
+                    <StatCard
+                      value={summary?.expenses?.total ?? 0}
+                      decimals={Number.isInteger(summary?.expenses?.total ?? 0) ? 0 : 2}
+                      prefix={sarPrefix}
+                      suffix={sarSuffix}
+                      sub={`${tx({ en: "Fleet expenses", ar: "مصروفات الأسطول" })}${expensePeriod ? ` (${expensePeriod})` : ""}`}
+                      onClick={() => openModule("expenses")}
+                    />
+                  )}
                 </motion.div>
 
                 {/* Quick Actions */}
@@ -464,14 +519,22 @@ export default function DashboardPage() {
 
                 {/* Charts */}
                 {/* Three charts sit in one row; four fall back to a 2x2 grid. */}
-                <motion.div variants={section} className={`grid grid-cols-1 gap-4 ${SHOW_MAINTENANCE_COST_CHART ? "lg:grid-cols-2" : "lg:grid-cols-3"}`}>
-                  <ChartCard mock title={tx({ en: "Kilometers driven (6 months)", ar: "الكيلومترات المقطوعة (6 أشهر)" })} options={charts.mileage} />
-                  <ChartCard mock title={tx({ en: "Expenses by category", ar: "المصروفات حسب الفئة" })} options={charts.expenses} />
-                  <ChartCard title={tx({ en: "Fleet status", ar: "حالة الأسطول" })} options={charts.status} />
-                  {SHOW_MAINTENANCE_COST_CHART && (
-                    <ChartCard mock title={tx({ en: "Maintenance cost: scheduled vs emergency", ar: "تكلفة الصيانة: مجدولة مقابل طارئة" })} options={charts.maintenance} />
-                  )}
-                </motion.div>
+                {chartCount > 0 && (
+                  <motion.div variants={section} className={`grid grid-cols-1 gap-4 ${chartCols}`}>
+                    {show.mileage && <ChartCard title={tx({ en: "Kilometers driven (6 months)", ar: "الكيلومترات المقطوعة (6 أشهر)" })} options={charts.mileage} />}
+                    {show.expenses && (
+                      <ChartCard
+                        title={`${tx({ en: "Expenses by category", ar: "المصروفات حسب الفئة" })}${expensePeriod ? ` (${expensePeriod})` : ""}`}
+                        options={charts.expenses}
+                        empty={summary?.expenses && summary.expenses.byCategory.length === 0 ? tx({ en: "No expenses in this period.", ar: "لا توجد مصروفات في هذه الفترة." }) : undefined}
+                      />
+                    )}
+                    {show.vehicles && <ChartCard title={tx({ en: "Fleet status", ar: "حالة الأسطول" })} options={charts.status} />}
+                    {SHOW_MAINTENANCE_COST_CHART && show.expenses && (
+                      <ChartCard title={tx({ en: "Maintenance cost: scheduled vs emergency", ar: "تكلفة الصيانة: مجدولة مقابل طارئة" })} options={charts.maintenance} />
+                    )}
+                  </motion.div>
+                )}
 
                 {/* Operations */}
                 <motion.div variants={section} className="grid grid-cols-1 gap-4 lg:grid-cols-2">
@@ -514,7 +577,7 @@ export default function DashboardPage() {
       {/* Boot + module-opening loaders */}
       <AnimatePresence>
         {!ready && <Loader fullScreen label={t("loadingDashboard")} />}
-        {opening && <Loader fullScreen label={`${t("opening")} ${tx(MODULE_LABELS[opening])}…`} />}
+        {openingVisible && <Loader fullScreen label={`${t("opening")} ${tx(MODULE_LABELS[opening])}…`} />}
       </AnimatePresence>
     </div>
   );

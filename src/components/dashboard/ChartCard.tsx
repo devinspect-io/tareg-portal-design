@@ -12,6 +12,8 @@ type ChartCardProps = {
   options: Options;
   /** The chart still draws mock data: shows a Mock tag. */
   mock?: boolean;
+  /** Shown in place of the chart when there is nothing to draw. */
+  empty?: string;
 };
 
 const emptySubscribe = () => () => {};
@@ -20,8 +22,8 @@ const emptySubscribe = () => () => {};
  * Titled dashboard card wrapping a Highcharts chart. The chart renders only
  * on the client (no SSR/window issues); a small gear loader fills in before.
  */
-export default function ChartCard({ title, options, mock = false }: ChartCardProps) {
-  // true on the client after hydration, false during SSR — no effect needed
+export default function ChartCard({ title, options, mock = false, empty }: ChartCardProps) {
+  // true on the client after hydration, false during SSR, no effect needed
   const mounted = useSyncExternalStore(
     emptySubscribe,
     () => true,
@@ -35,7 +37,9 @@ export default function ChartCard({ title, options, mock = false }: ChartCardPro
         {mock && <MockTag />}
       </h3>
       <div className="h-64">
-        {mounted ? (
+        {empty ? (
+          <div className="flex h-full items-center justify-center px-6 text-center text-sm text-neutral-500 dark:text-neutral-400">{empty}</div>
+        ) : mounted ? (
           <HighchartsReact
             highcharts={Highcharts}
             options={options}

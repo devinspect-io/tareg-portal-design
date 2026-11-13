@@ -74,6 +74,12 @@ export function lastMonths(count: number, lang: Language): string[] {
   return out;
 }
 
+/** Short month name for an API month key ("2026-11" -> "Nov"). */
+export function fmtMonth(ym: string, lang: Language): string {
+  const [y, m] = ym.split("-").map(Number);
+  return new Date(y, m - 1, 1).toLocaleDateString(LOCALE[lang], { month: "short" });
+}
+
 // ---------- Statuses ----------
 
 export type Tone = "good" | "warn" | "bad" | "info" | "neutral";

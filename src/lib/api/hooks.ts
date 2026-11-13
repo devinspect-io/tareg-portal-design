@@ -13,6 +13,24 @@ export type Loadable<T> = {
   reload: () => void;
 };
 
+// How many mounted screens are still waiting on their FIRST load. The
+// full-screen "Opening <screen>" and boot loaders stay up while this is above
+// zero, so they last as long as the API takes instead of a fixed timer.
+// Reloads (refresh, polling badges) never count: their data is already shown.
+let firstLoads = 0;
+const firstLoadListeners = new Set<() => void>();
+function changeFirstLoads(by: 1 | -1) {
+  firstLoads += by;
+  firstLoadListeners.forEach((l) => l());
+}
+export function subscribeFirstLoads(listener: () => void) {
+  firstLoadListeners.add(listener);
+  return () => {
+    firstLoadListeners.delete(listener);
+  };
+}
+export const firstLoadsInFlight = () => firstLoads;
+
 /**
  * Runs `fetcher` on mount and whenever `key` changes (pass the serialised
  * filters). Out-of-order responses are dropped, so typing fast in a search
@@ -25,6 +43,9 @@ export function useApi<T>(fetcher: () => Promise<T>, key: string): Loadable<T> {
   const [tick, setTick] = useState(0);
   const seq = useRef(0);
   const fetcherRef = useRef(fetcher);
+  // Counted in `firstLoads` until the first response (or error) lands.
+  const loaded = useRef(false);
+  const counted = useRef(false);
 
   useEffect(() => {
     fetcherRef.current = fetcher;
@@ -32,6 +53,10 @@ export function useApi<T>(fetcher: () => Promise<T>, key: string): Loadable<T> {
 
   useEffect(() => {
     const mine = ++seq.current;
+    if (!loaded.current && !counted.current) {
+      counted.current = true;
+      changeFirstLoads(1);
+    }
     // Async start keeps the effect free of synchronous setState.
     Promise.resolve()
       .then(() => {
@@ -50,9 +75,26 @@ export function useApi<T>(fetcher: () => Promise<T>, key: string): Loadable<T> {
         },
       )
       .finally(() => {
-        if (mine === seq.current) setFetching(false);
+        if (mine !== seq.current) return;
+        setFetching(false);
+        loaded.current = true;
+        if (counted.current) {
+          counted.current = false;
+          changeFirstLoads(-1);
+        }
       });
   }, [key, tick]);
+
+  // Leaving a screen before its first load lands must not hold the loader up.
+  useEffect(
+    () => () => {
+      if (counted.current) {
+        counted.current = false;
+        changeFirstLoads(-1);
+      }
+    },
+    [],
+  );
 
   const reload = useCallback(() => setTick((t) => t + 1), []);
   return { data, error, loading: fetching && data === undefined, fetching, reload };
